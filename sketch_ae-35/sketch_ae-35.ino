@@ -22,8 +22,8 @@
  * Compute the location of one of a selection of orbiting satellites from an internal database
  * and steer an altitude/azimuth gimbal to maintain a track while object is above the horizon.
  *
- * On initialization the user uses the manual motor controls to move the antenna to a home position
- * and then configure the system for tracking.
+ * On initialization the user inputs the GMT time and date, chooses from a list of orbiting objects 
+ * and steers the antenna gimbal to north/horizon using manual inputs. 
  * 
  * Copyright 2015 Todd Deckard, All rights reserved. 
  *
@@ -84,6 +84,7 @@ unsigned short int          _flagTimeSetManually = 0;
 unsigned short int          _flagDateSetManually = 0;
 unsigned short int          _flagSatelliteSet = 0;
 
+#define DEBUGP13 1
 Plan13              p13;
 // temporarily hard code in TLEs
 // http://www.amsat.org/amsat/ftp/keps/current/nasabare.txt
@@ -95,8 +96,11 @@ String _keps[] =
     "1 20580U 90037B   15308.45560487  .00002158  00000-0  12608-3 0  9996",
     "2 20580  28.4708 308.8893 0002648 304.5112 184.0287 15.07840717201004",
     "ISS",
-    "1 25544U 98067A   15309.81789784  .00013916  00000-0  21144-3 0  9995",
-    "2 25544  51.6437  97.2215 0006609 110.9935  46.4217 15.54841262970078",
+    "1 25544U 98067A   15319.57746612  .00014090  00000-0  21211-3 0  9991",
+    "2 25544  51.6461  48.5120 0006315 139.5641 326.7652 15.55086969971595",
+    "MOON2015_11",
+    "1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
+    "2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
     "AO-07",
     "1 07530U 74089B   15308.92431491 -.00000023  00000-0  13127-3 0  9996",
     "2 07530 101.5414 280.4840 0012327 030.1971 351.6256 12.53617504874668",
@@ -136,17 +140,16 @@ String _keps[] =
     "XW-2F",
     "1 40910U 15049M   15309.87165313  .00004847  00000-0  28247-3 0  9994",
     "2 40910  97.4564 316.9397 0018646  88.8776 356.6142 15.12306885  6976",
-    "XW-2B",
-    "1 40911U 15049N   15309.80160508  .00003288  00000-0  19257-3 0  9998",
-    "2 40911  97.4577 316.8903 0017231  90.3593 355.9579 15.12376423  6978",
+    "TEST",
+    "1 25544U 98067A   08264.51782528 -.00002182  00000-0 -11606-4 0  2927",
+    "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537",
     "END",
 };
 
-#define AZIMUTH_STEPS_PER_REV    200
-#define ELEVATION_STEPS_PER_REV  200
-
-#define AZIMUTH_REV_PER_DEGREE   1
-#define ELEVATION_REV_PER_DEGREE 1
+#define AZIMUTH_MOTOR_STEPS_PER_REV         200
+#define ELEVATION_MOTOR_STEPS_PER_REV       200
+#define AZIMUTH_GIMBAL_STEPS_PER_DEGREE     (1180.0 / 90.0)
+#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   (1760.0/ 45.0 )
 
 void readbtns();
 
@@ -258,7 +261,7 @@ void readbtns()
 
 } ;
 
-void pollGPS()
+void pollGPS()                            // GPS shield is not integrated
 {
 
 #ifdef FUNCTIONTRACETOSERIAL
@@ -269,7 +272,7 @@ void pollGPS()
     _gps_debug_temporary += 1;
     if (_gps_debug_temporary > 50)
     {
-        _latitude  =  44.884860;
+        _latitude  =  44.884860;          // grid square EN34FV 
         _longitude = -93.551492;
         p13.setLocation(_longitude,_latitude,0);
         // p13.setTime(year(t),month(t),day(t),hour(t),minute(t),second(t));
@@ -312,8 +315,8 @@ void buttonCommand()
             break;
         };
 
-        _commandElSteps = _commandElevation * ELEVATION_REV_PER_DEGREE * ELEVATION_STEPS_PER_REV;
-        _commandAzSteps = _commandAzimuth * AZIMUTH_REV_PER_DEGREE * AZIMUTH_STEPS_PER_REV;
+        _commandElSteps = _commandElevation / ELEVATION_GIMBAL_STEPS_PER_DEGREE;
+        _commandAzSteps = _commandAzimuth / AZIMUTH_GIMBAL_STEPS_PER_DEGREE; 
 
     }
     else
@@ -400,12 +403,12 @@ void updateLCD()
 
 // Define some steppers and the pins the will use
 
-AF_Stepper motor1(200,1);
-AF_Stepper motor2(200,2);
+AF_Stepper motor1(ELEVATION_MOTOR_STEPS_PER_REV,1);
+AF_Stepper motor2(AZIMUTH_MOTOR_STEPS_PER_REV,2);
 
 void forwardstep_motor1()
 {
-    motor1.onestep(BACKWARD, SINGLE);
+    motor1.onestep(BACKWARD, SINGLE);     // note with free spinning exec, consider INTERLEAVE motor for elevation
 }
 void backwardstep_motor1()
 {
@@ -431,12 +434,12 @@ void motorCommand()
     Serial.println(__func__);
 #endif
 
-    azimuthMotor.moveTo(_commandAzSteps);
-    azimuthMotor.setMaxSpeed(450);              // cyclic executive run(s) at a maximum of 500/second
-    azimuthMotor.setAcceleration(50.0);
+    azimuthMotor.moveTo(_commandAzSteps);       // Note: original executive was throttled to a maximum of 50 steps/second
+    azimuthMotor.setMaxSpeed(50);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
+    azimuthMotor.setAcceleration(10.0);         // 
     elevationMotor.moveTo(_commandElSteps);
-    elevationMotor.setMaxSpeed(450);
-    elevationMotor.setAcceleration(50.0);
+    elevationMotor.setMaxSpeed(50);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
+    elevationMotor.setAcceleration(10.0);       //
 }
 
 void moveMotors()
@@ -447,11 +450,7 @@ void moveMotors()
 
 // executive runs every 20ms, 500 times a second maximum
 //
-// experiment with 1000 commands / second;
     azimuthMotor.run();
-    azimuthMotor.run();
-
-    elevationMotor.run();
     elevationMotor.run();
 }
 
@@ -486,8 +485,8 @@ void trackCommand()
 
     // note elevation steps/degree presumes SINGLE step mode
 
-    _commandElSteps = _commandElevation * 1760 / 45;
-    _commandAzSteps = _commandAzimuth * 1180 / 90;
+    _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
+    _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE);
 }
 
 void printMotorPos()
@@ -559,7 +558,7 @@ void (*fast[5][NUMBEROFSTATES])()
     noop,        noop,        noop,        noop,        noop,        noop,      noop
   };
 
-void manualSatelliteInput()
+void manualSatelliteInput_blocking()
 {
     int index = 1;
     unsigned short int initial_button_state;
@@ -606,7 +605,7 @@ void manualSatelliteInput()
 //
 // sloppy function to manually input date until GPS module integrated
 //
-void manualDateInput()
+void manualDateInput_blocking()
 {
     int Month=1;
     int Day=1;
@@ -731,7 +730,7 @@ void manualDateInput()
 //
 // sloppy function to manually input time until GPS module integrated
 //
-void manualTimeInput()
+void manualTimeInput_blocking()
 {
 
     unsigned short int initial_button_state;
@@ -912,9 +911,9 @@ void initAE35()
 
 // temporarily allow user to input an approximate time
 
-    manualTimeInput();
-    manualDateInput();
-    manualSatelliteInput();
+    manualTimeInput_blocking();
+    manualDateInput_blocking();
+    manualSatelliteInput_blocking();
 
 //
 };
@@ -926,7 +925,6 @@ void configAE35()
 #endif
     int i = 1;
     boolean found = 0;
-    char temp[128];
 
     double epochTime,inclination,eccentricity, rightAscension,argOfPerigee,
            meanAnomoly, meanMotion,decayRate, revolutionNumber, epochYear, orbitNumber;
@@ -940,13 +938,17 @@ void configAE35()
     }
 
     epochTime =          _keps[i+1].substring(21-1,32).toFloat();
-    String decay = "." + _keps[i+1].substring(54-1,59) + "E-" + _keps[i+1].substring(61-1,61);
-    decayRate = atof(decay.c_str());
+    // String decay = _keps[i+1].substring(54-1,54) + "0." + _keps[i+1].substring(55-1,59) + "E-" + _keps[i+1].substring(61-1,61);  
+    double mant = _keps[i+1].substring(54-1,59).toFloat();
+           mant =  mant / pow(10.0,(int)(log10(abs(mant))+1));
+    double expo = _keps[i+1].substring(60-1,61).toFloat(); 
+    decayRate = mant*pow(10.0,expo);
+   
     epochYear =          _keps[i+1].substring(19-1,20).toFloat() + 2000.0;
 
     inclination =        _keps[i+2].substring(9-1,16).toFloat();
     rightAscension =     _keps[i+2].substring(18-1,25).toFloat();
-    String eccen = "." + _keps[i+2].substring(27-1,33);
+    String eccen = "0." + _keps[i+2].substring(27-1,33);                                          // note the leading zero
     eccentricity = eccen.toFloat();
     argOfPerigee =       _keps[i+2].substring(35-1,42).toFloat();
     meanAnomoly =        _keps[i+2].substring(44-1,51).toFloat();
@@ -968,51 +970,68 @@ void configAE35()
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("epochYear");
+    Serial.println("epochYear");
     lcd.setCursor(0,1);
     lcd.print(epochYear);
+    Serial.println(epochYear); 
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("epochTime");
+    Serial.println("epochTime");
     lcd.setCursor(0,1);
     lcd.print(epochTime);
+    Serial.println(epochTime);
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("inclination");
+    Serial.println("inclination");
     lcd.setCursor(0,1);
     lcd.print(inclination);
+    Serial.println(inclination);
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("rightAscension");
+    Serial.println("rightAscension");
     lcd.setCursor(0,1);
-    lcd.print(rightAscension);
-    delay(500);
+    lcd.print(rightAscension); 
+    Serial.println(rightAscension);  
+    delay(500); 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("eccentricity");
+    lcd.print("eccentr. * 10^6");
+    Serial.println("eccentr. * 10^6");
     lcd.setCursor(0,1);
-    lcd.print(eccentricity);
-    delay(500);
+    lcd.print((eccentricity * 1000000.0)); 
+    Serial.println((eccentricity * 1000000.0));
+    delay(1000);
+    
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("argOfPerigee");
+    Serial.print("argOfPerigee");
     lcd.setCursor(0,1);
     lcd.print(argOfPerigee);
+    Serial.print(argOfPerigee);
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("meanAnomoly");
+    Serial.print("meanAnomoly");
     lcd.setCursor(0,1);
     lcd.print(meanAnomoly);
+    Serial.print(meanAnomoly);
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("decayRate");
+    lcd.print("decayRate * 10^6");
+    Serial.print("decayRate * 10^6");
     lcd.setCursor(0,1);
-    lcd.print(decayRate);
-    delay(500);
+    lcd.print((decayRate * 1000000.0));
+    Serial.print((decayRate * 1000000.0));
+    delay(1000);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("revolutionNumber");
@@ -1174,7 +1193,7 @@ void loop ()
         for (i=0; i<5; i++) (*fast[i][_state])();
         _fastTimer = 0;
     }
-    if (_mediumTimer >= 60)
+    if (_mediumTimer >= 50)
     {
         for (i=0; i<5; i++) (*medium[i][_state])();
         _mediumTimer = 0;
@@ -1184,8 +1203,10 @@ void loop ()
         for (i=0; i<5; i++) (*slow[i][_state])();
         _slowTimer = 0;
     }
-
-    delay (max((long)(20 - (millis() - _ms)),0));  // NO CHECK FOR 1202 error
+    // NO CHECK FOR 1202 error
+    // delay (max((long)(20 - (millis() - _ms)),0));  // original exec would sleep off the unused time every 20ms  
+    azimuthMotor.run();                               // now always try to advance the stepper motors if the executive is spinning 
+    elevationMotor.run();                             
 }
 
 
