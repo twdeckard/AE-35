@@ -98,15 +98,15 @@ String _keps[] =
     "ISS",
     "1 25544U 98067A   15319.57746612  .00014090  00000-0  21211-3 0  9991",
     "2 25544  51.6461  48.5120 0006315 139.5641 326.7652 15.55086969971595",
+    "IS2",            
+    "1 25544U 98067A   15320.15058293  .00014257  00000-0  21440-3 0  9997",
+    "2 25544  51.6460  45.6495 0006260 141.8189 295.1473 15.55104552971688",
     "MOON2015_11",
     "1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
     "2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
     "AO-07",
     "1 07530U 74089B   15308.92431491 -.00000023  00000-0  13127-3 0  9996",
     "2 07530 101.5414 280.4840 0012327 030.1971 351.6256 12.53617504874668",
-    "FO-29",
-    "1 24278U 96046B   15309.47255762  .00000031  00000-0  65076-4 0  9996",
-    "2 24278  98.5618 259.2809 0351321  64.6751  45.2683 13.53059038949132",
     "AO-73",
     "1 39444U 13066AE  15309.15464776  .00001507  00000-0  19724-3 0  9997",
     "2 39444  97.7143   6.6449 0060249  37.1727 323.3634 14.80585767104273",
@@ -125,9 +125,6 @@ String _keps[] =
     "AO-27",
     "1 22825U 93061C   15307.93286803  .00000103  00000-0  57299-4 0  9993",
     "2 22825 098.7267 258.1938 0007315 259.0593 100.9766 14.29914069152636",
-    "NO-44",
-    "1 26931U 01043C   15309.04910312  .00000083  00000-0  63618-4 0  9996",
-    "2 26931  67.0504 173.7260 0006523 277.1982  82.8377 14.30356000735948",
     "SO-50",
     "1 27607U 02058C   15308.94235219  .00000645  00000-0  11160-3 0  9996",
     "2 27607 064.5533 128.9524 0082601 261.4106 097.7631 14.74903884691915",
@@ -137,9 +134,6 @@ String _keps[] =
     "XW-2D",
     "1 40907U 15049J   15309.80212380  .00003171  00000-0  18597-3 0  9996",
     "2 40907  97.4527 316.8600 0017349  90.2694 355.8372 15.12348934  7071",
-    "XW-2F",
-    "1 40910U 15049M   15309.87165313  .00004847  00000-0  28247-3 0  9994",
-    "2 40910  97.4564 316.9397 0018646  88.8776 356.6142 15.12306885  6976",
     "TEST",
     "1 25544U 98067A   08264.51782528 -.00002182  00000-0 -11606-4 0  2927",
     "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537",
@@ -274,8 +268,9 @@ void pollGPS()                            // GPS shield is not integrated
     {
         _latitude  =  44.884860;          // grid square EN34FV 
         _longitude = -93.551492;
-        p13.setLocation(_longitude,_latitude,0);
-        // p13.setTime(year(t),month(t),day(t),hour(t),minute(t),second(t));
+        p13.setLocation(_longitude,_latitude,0.0);
+        // p13.setLocation(-64.375, 45.8958,0.0); // Sackville, NB
+        p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
         _state_transition_flag |= GPS_LOCK;
         lcd.clear();
     }
@@ -461,7 +456,8 @@ void updateSat()
 #endif
 
     time_t t = now();
-    p13.setTime(year(t),month(t),day(t),hour(t),minute(t),second(t));
+    p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
+    // p13.setTime(2009, 10, 1, 19, 5, 0); //Oct 1, 2009 19:05:00 UTC
     p13.satvec();
     p13.rangevec();
 
@@ -685,7 +681,7 @@ void manualDateInput_blocking()
             else if (_lcd_button_debounce == LCD_BUTTON_SELECT)
             {
                 time_t t=now();
-                setTime(hour(t),minute(t),second(t),Month,Day,Year);
+                setTime(hour(t),minute(t),second(t),Day,Month,Year);
                 _flagDateSetManually = 1;
             }
         }
@@ -954,7 +950,7 @@ void configAE35()
     meanAnomoly =        _keps[i+2].substring(44-1,51).toFloat();
     meanMotion =         _keps[i+2].substring(53-1,63).toFloat();
     revolutionNumber =   _keps[i+2].substring(64-1,68).toFloat();
-
+    
     /*********************
        epochYear = 2015.0;
        epochTime = 262.54809569;
@@ -970,79 +966,95 @@ void configAE35()
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("epochYear");
-    Serial.println("epochYear");
     lcd.setCursor(0,1);
     lcd.print(epochYear);
-    Serial.println(epochYear); 
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("epochTime");
-    Serial.println("epochTime");
     lcd.setCursor(0,1);
     lcd.print(epochTime);
-    Serial.println(epochTime);
-    delay(500);
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("inclination");
-    Serial.println("inclination");
-    lcd.setCursor(0,1);
-    lcd.print(inclination);
-    Serial.println(inclination);
-    delay(500);
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("rightAscension");
-    Serial.println("rightAscension");
-    lcd.setCursor(0,1);
-    lcd.print(rightAscension); 
-    Serial.println(rightAscension);  
-    delay(500); 
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("eccentr. * 10^6");
-    Serial.println("eccentr. * 10^6");
-    lcd.setCursor(0,1);
-    lcd.print((eccentricity * 1000000.0)); 
-    Serial.println((eccentricity * 1000000.0));
-    delay(1000);
-    
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("argOfPerigee");
-    Serial.print("argOfPerigee");
-    lcd.setCursor(0,1);
-    lcd.print(argOfPerigee);
-    Serial.print(argOfPerigee);
-    delay(500);
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("meanAnomoly");
-    Serial.print("meanAnomoly");
-    lcd.setCursor(0,1);
-    lcd.print(meanAnomoly);
-    Serial.print(meanAnomoly);
     delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("decayRate * 10^6");
-    Serial.print("decayRate * 10^6");
     lcd.setCursor(0,1);
     lcd.print((decayRate * 1000000.0));
-    Serial.print((decayRate * 1000000.0));
-    delay(1000);
+    delay(3000);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("inclination");
+    lcd.setCursor(0,1);
+    lcd.print(inclination);
+    delay(500);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("rightAscension");
+    lcd.setCursor(0,1);
+    lcd.print(rightAscension); 
+    delay(500); 
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("eccentr. * 10^6");
+    lcd.setCursor(0,1);
+    lcd.print((eccentricity * 1000000.0)); 
+    delay(3000);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("argOfPerigee");
+    lcd.setCursor(0,1);
+    lcd.print(argOfPerigee); 
+    delay(500);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("meanAnomoly");
+    lcd.setCursor(0,1);
+    lcd.print(meanAnomoly); 
+    delay(500);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("meanMotion");
+    lcd.setCursor(0,1);
+    lcd.print(meanMotion); 
+    delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("revolutionNumber");
     lcd.setCursor(0,1);
-    lcd.print(revolutionNumber);
+    lcd.print(revolutionNumber); 
     delay(500);
+    
+    Serial.println("epochYear");
+    Serial.println(epochYear); 
+    Serial.println("epochTime");
+    Serial.println(epochTime);
+    Serial.println("decayRate * 10^6");
+    Serial.println((decayRate * 1000000.0));
+    Serial.println("inclination");
+    Serial.println(inclination);
+    Serial.println("rightAscension");
+    Serial.println(rightAscension);  
+    Serial.println("eccentr. * 10^6");
+    Serial.println((eccentricity * 1000000.0));
+    Serial.println("argOfPerigee");
+    Serial.println(argOfPerigee);
+    Serial.println("meanAnomoly");
+    Serial.println(meanAnomoly);
+    Serial.println("meanMotion");
+    Serial.println(meanMotion); 
+    Serial.println("decayRate * 10^6");
+    Serial.println((decayRate * 1000000.0));
+    Serial.println("revolutionNumber");
+    Serial.println(revolutionNumber);
 
-    p13.setTime(2015, 9, 20, 12, 0, 0);   // just set a sensible time
+    time_t t = now();
+    p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
+    // p13.setTime(2009, 10, 1, 19, 5, 0); //Oct 1, 2009 19:05:00 UTC
     _latitude  =  44.884860;
     _longitude = -93.551492;
-    p13.setLocation(_longitude,_latitude,0);  // just set a sensible lat/lon
+    p13.setLocation(_longitude,_latitude,0.0);  // just set a sensible lat/lon
+    //  p13.setLocation(-64.375, 45.8958, 0.0);        // Sackville, NB
+
 
     p13.setElements(           epochYear,
                                epochTime,
@@ -1055,6 +1067,10 @@ void configAE35()
                                decayRate,
                                revolutionNumber,
                                180.0);
+
+  // p13.setElements(2009, 232.55636497, 98.0531, 238.4104, 83652*1.0e-7, 290.6047,
+  // 68.6188, 14.406497342, -0.00000001, 27022, 180.0); //fairly recent keps for AO-51 
+    
     p13.initSat();
 
 #ifdef DEBUGP13
@@ -1092,6 +1108,7 @@ void trackAE35()
 
     time_t t = now();
     p13.setTime(year(t),month(t),day(t),hour(t),minute(t),second(t));
+    // p13.setTime(2009, 10, 1, 19, 5, 0); //Oct 1, 2009 19:05:00 UTC
     p13.satvec();
     p13.rangevec();
 
