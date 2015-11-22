@@ -38,10 +38,13 @@
 #define DRIV        (INIT+3)
 #define TRAC        (INIT+4)
 #define HOME        (INIT+5)
-#define STOP        (INIT+6)
+#define SERL        (INIT+6)
+#define STOP        (INIT+7)
+
+#define  NUMBEROFSTATES     (STOP - INIT + 1)
 
 unsigned short int           _state;
-unsigned short int           _state_transition_flag;
+unsigned short int           _stateTransitionFlag;
 
 time_t                       _time;
 unsigned long int            _ms;
@@ -69,10 +72,10 @@ double                      _latitude;
 double                      _longitude;
 
 String                      _target;
+String                      _serialInput;       // repetitive string commmands may be perilous 
 
-#define  NUMBEROFSTATES     7
 
-String                      _stateLabels[] = { "INIT", "CNFG", "GPSL", "DRIV", "TRAC", "HOME", "STOP"};
+String                      _stateLabels[] = { "INIT", "CNFG", "GPSL", "DRIV", "TRAC", "HOME", "SERL", "STOP"};
 unsigned short int          _lcd_button_now = 0;
 unsigned short int          _lcd_button_prev = 0;
 boolean                     _flagHomePositionSet = 0;
@@ -84,7 +87,7 @@ unsigned short int          _flagTimeSetManually = 0;
 unsigned short int          _flagDateSetManually = 0;
 unsigned short int          _flagSatelliteSet = 0;
 
-#define DEBUGP13 1
+
 Plan13              p13;
 // temporarily hard code in TLEs
 // http://www.amsat.org/amsat/ftp/keps/current/nasabare.txt
@@ -143,7 +146,7 @@ String _keps[] =
 #define AZIMUTH_MOTOR_STEPS_PER_REV         200
 #define ELEVATION_MOTOR_STEPS_PER_REV       200
 #define AZIMUTH_GIMBAL_STEPS_PER_DEGREE     (1180.0 / 90.0)
-#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   (1760.0/ 45.0 )
+#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   (1760.0 / 45.0)
 
 void readbtns();
 
@@ -171,8 +174,8 @@ LiquidCrystal lcd(28,11,24,25,26,27);
 #define LCD_BUTTON_SELECT                         64
 #define GPS_LOCK                                  128
 #define HOME_POSITION_SET                         256
+#define SERIAL_DATA                               1024
 
-#ifdef DEBUGP13
 
 void debugP13keps()
 {
@@ -219,15 +222,14 @@ void debugP13keps()
     Serial.println("");
 }
 
-#endif
 
-#ifdef DEBUGP13
 void debugp13update()
 {
+#ifdef DEBUGP13
     p13.printdata();
     Serial.println("");
+#endif 
 }
-#endif
 
 void readbtns()
 {
@@ -248,10 +250,10 @@ void readbtns()
 
     _lcd_button_debounce = _lcd_button_now; // no debouncing
     /*
-    _state_transition_flag &= !(LCD_BUTTON_NONE | LCD_BUTTON_RIGHT | LCD_BUTTON_LEFT | LCD_BUTTON_UP | LCD_BUTTON_DOWN |
+    _stateTransitionFlag &= !(LCD_BUTTON_NONE | LCD_BUTTON_RIGHT | LCD_BUTTON_LEFT | LCD_BUTTON_UP | LCD_BUTTON_DOWN |
                                 LCD_BUTTON_SELECT);  // one button command at a time
     */
-    _state_transition_flag |= _lcd_button_debounce;
+    _stateTransitionFlag |= _lcd_button_debounce;
 
 } ;
 
@@ -271,7 +273,7 @@ void pollGPS()                            // GPS shield is not integrated
         p13.setLocation(_longitude,_latitude,0.0);
         // p13.setLocation(-64.375, 45.8958,0.0); // Sackville, NB
         p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
-        _state_transition_flag |= GPS_LOCK;
+        _stateTransitionFlag |= GPS_LOCK;
         lcd.clear();
     }
 }
@@ -293,26 +295,27 @@ void buttonCommand()
         switch(_lcd_button_debounce)
         {
         case LCD_BUTTON_UP:
-            _commandElevation+=1.0;
-            _commandElevation = min(_commandElevation,80.0);
+            _targetElevation = round(_targetElevation + 1.0);
+            _targetElevation = min(_targetElevation,80.0);
             break;
         case LCD_BUTTON_DOWN:
-            _commandElevation-=1.0;
-            _commandElevation = max(_commandElevation,0.0);
+            _targetElevation = round(_targetElevation - 1.0);
+            _targetElevation = max(_targetElevation,0.0);
             break;
         case LCD_BUTTON_RIGHT:
-            _commandAzimuth+=1.0;
-            _commandAzimuth  =  min(_commandAzimuth,350.0);
+            _targetAzimuth = round(_targetAzimuth + 1.0);
+            _targetAzimuth  =  min(_targetAzimuth,350.0);
             break;
         case LCD_BUTTON_LEFT:
-            _commandAzimuth-=1.0;
-            _commandAzimuth   = max(_commandAzimuth,0.0);
+            _targetAzimuth = round(_targetAzimuth - 1.0);
+            _targetAzimuth   = max(_targetAzimuth,0.0);
             break;
         };
 
-        _commandElSteps = _commandElevation / ELEVATION_GIMBAL_STEPS_PER_DEGREE;
-        _commandAzSteps = _commandAzimuth / AZIMUTH_GIMBAL_STEPS_PER_DEGREE; 
-
+        _commandElevation = _targetElevation;
+        _commandAzimuth = _targetAzimuth;
+        _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
+        _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE);
     }
     else
     {
@@ -476,7 +479,6 @@ void trackCommand()
     _commandElevation = min(max(_targetElevation,5.0),80.0);
 
     _commandAzimuth = _targetAzimuth = min(p13.AZ,360.0);
-
     if (_targetAzimuth > 180.0) _commandAzimuth = - (360.0 - _commandAzimuth);
 
     // note elevation steps/degree presumes SINGLE step mode
@@ -502,6 +504,41 @@ void printMotorPos()
 void displaySel() { } ;
 void menuSel()  { };
 
+void checkSerial() {
+  if (Serial.available()>0) { 
+      _stateTransitionFlag |= SERIAL_DATA; 
+     }
+  // once we transition to Serial we never go back to MASTER modes
+}
+
+//
+// AZ    Azimuth     number - 1 decimal place
+// EL    Elevation   number - 1 decimal place
+// SA    Stop azimuth moving
+// SE    Stop elevation moving
+//
+void serialCommand() {
+    if (!(Serial.available() > 0)) return; 
+    _target = "SLAVE";
+    
+    char c = (char)Serial.read();
+    // add it to the inputString:
+    _serialInput += c;
+   if ((c == '\n') && (_serialInput.length()>2 )) {
+        _serialInput.toUpperCase();
+        if (_serialInput.startsWith("AZ")) {
+             _commandAzimuth = _targetAzimuth = _serialInput.substring(2,_serialInput.length()-2).toFloat(); 
+             _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE); 
+             Serial.println(_commandAzimuth); 
+             _serialInput = ""; 
+        } else if (_serialInput.startsWith("EL")) {
+             _commandElevation = _targetElevation = _serialInput.substring(2,_serialInput.length()-2).toFloat(); 
+             _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
+             Serial.println(_commandElevation);  
+             _serialInput = ""; 
+        } 
+    }
+}
 /********************************************************************************************************
  *
  * Define Cyclic Executive State Machine
@@ -514,44 +551,46 @@ void menuSel()  { };
 #define SEL         (LCD_BUTTON_SELECT)
 #define SEL         (LCD_BUTTON_SELECT)
 #define HOM         (HOME_POSITION_SET)
+#define SER         (SERIAL_DATA)
 
 unsigned short int transitions[NUMBEROFSTATES][NUMBEROFSTATES] =
 {
-    /*                   INIT        CNFG         GPSL       DRIV        TRAC        HOM        STOP  */
-    /* INIT   */        NEVER,      ALWAYS,       NEVER,     NEVER,     NEVER,     NEVER,      NEVER,
-    /* CNFG   */        NEVER,      NEVER,        ALWAYS,    NEVER,     NEVER,     NEVER,      NEVER,
-    /* GPSL   */        NEVER,      NEVER,        NEVER,    GPS_LOCK,   NEVER,     NEVER,      NEVER,
-    /* DRIV   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     SEL,       NEVER,
-    /* TRAC   */        NEVER,      NEVER,        NEVER,    UPDNRTLF,   NEVER,     NEVER,      NEVER,
-    /* HOME   */        NEVER,      NEVER,        NEVER,     NEVER,     ALWAYS,    NEVER,      NEVER,
-    /* STOP   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER
+    /*                   INIT        CNFG         GPSL       DRIV        TRAC        HOM       SERL     STOP  */
+    /* INIT   */        NEVER,      ALWAYS,       NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER,
+    /* CNFG   */        NEVER,      NEVER,        ALWAYS,    NEVER,     NEVER,     NEVER,      NEVER,   NEVER,
+    /* GPSL   */        NEVER,      NEVER,        NEVER,    GPS_LOCK,   NEVER,     NEVER,      NEVER,   NEVER,
+    /* DRIV   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     SEL,        SER,     NEVER,
+    /* TRAC   */        NEVER,      NEVER,        NEVER,    UPDNRTLF,   NEVER,     NEVER,      SER,     NEVER,
+    /* HOME   */        NEVER,      NEVER,        NEVER,     NEVER,     ALWAYS,    NEVER,      NEVER,   NEVER,
+    /* SERL   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER, 
+    /* STOP   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER,
 };
 
-/*                            INIT         CNFG        GPSL        DRIV        TRAC        HOME         STOP  */
+/*    INIT         CNFG        GPSL        DRIV          TRAC        HOME        SERL      STOP  */
 void (*slow[5][NUMBEROFSTATES])()
-= {  noop,       displaySel, updateLCD,   updateLCD,   updateLCD,   updateLCD,   noop,
-     noop,        noop,       pollGPS,  printMotorPos, updateSat,     noop,      noop,
-     noop,        noop,        noop,        noop,    trackCommand,    noop,      noop,
-     noop,        noop,        noop,        noop,    printMotorPos,   noop,      noop,
-     noop,        noop,        noop,        noop,        noop,        noop,      noop
+= {  noop,       displaySel, updateLCD,   updateLCD,   updateLCD,   updateLCD, updateLCD,    noop,
+     noop,        noop,       pollGPS,  printMotorPos, updateSat,     noop,      noop,    noop,
+     noop,        noop,        noop,        noop,    trackCommand,    noop,      noop,    noop,
+     noop,        noop,        noop,        noop,    printMotorPos,   noop,      noop,    noop,
+     noop,        noop,        noop,        noop,        noop,        noop,      noop,    noop,
   };
 
-/*                            INIT         CNFG        GPSL        DRIV         TRAC         HOME        STOP  */
+/*   INIT         CNFG        GPSL        DRIV         TRAC         HOME        SERL      STOP  */
 void (*medium[5][NUMBEROFSTATES])()
-= {  noop,      menuSel,       noop,   buttonCommand, motorCommand,        noop,      noop,
-     noop,        noop,        noop,    motorCommand,    noop,        noop,      noop,
-     noop,        noop,        noop,        noop,        noop,        noop,      noop,
-     noop,        noop,        noop,        noop,        noop,        noop,      noop,
-     noop,        noop,        noop,        noop,        noop,        noop,      noop
+= {  noop,      menuSel,       noop,   buttonCommand, motorCommand, noop,   serialCommand, noop,
+     noop,        noop,        noop,    motorCommand,  checkSerial, noop,   motorCommand,  noop,
+     noop,        noop,        noop,        noop,        noop,      noop,      noop,       noop,
+     noop,        noop,        noop,        noop,        noop,      noop,      noop,       noop,
+     noop,        noop,        noop,        noop,        noop,      noop,      noop,       noop
   };
 
-/*                            INIT         CNFG        GPSL        DRIV         TRAC,        HOME        STOP  */
+/*   INIT         CNFG        GPSL        DRIV         TRAC,        HOME        SERL      STOP */
 void (*fast[5][NUMBEROFSTATES])()
-= { readbtns,  readbtns,    readbtns,    readbtns,     readbtns,    readbtns,    noop,
-    noop,        noop,        noop,     moveMotors,  moveMotors,     noop,      noop,
-    noop,        noop,        noop,        noop,        noop,        noop,      noop,
-    noop,        noop,        noop,        noop,        noop,        noop,      noop,
-    noop,        noop,        noop,        noop,        noop,        noop,      noop
+= { readbtns,  readbtns,    readbtns,    readbtns,     readbtns,  readbtns,  moveMotors,  noop,
+    noop,        noop,        noop,     moveMotors,  moveMotors,     noop,      noop,     noop,
+    noop,        noop,        noop,        noop,        noop,        noop,      noop,     noop,
+    noop,        noop,        noop,        noop,        noop,        noop,      noop,     noop,
+    noop,        noop,        noop,        noop,        noop,        noop,      noop,     noop
   };
 
 void manualSatelliteInput_blocking()
@@ -876,7 +915,7 @@ void initAE35()
     _lastms = _fastTimer = _mediumTimer = _slowTimer = 0;
     _commandAzimuth = _commandElevation = _targetAzimuth = _targetElevation = 0;
     _commandAzSteps = _commandElSteps = 0;
-    _state_transition_flag = 0;
+    _stateTransitionFlag = 0;
     _flagHomePositionSet = 0;
 
     setTime(23,30,00,11,10,15);
@@ -887,8 +926,8 @@ void initAE35()
     lcd.setCursor(0,0);
     lcd.print("AE-35 Antenna");
     lcd.setCursor(0,1);
-    lcd.print(__FILE__);
-
+    lcd.print(__DATE__);
+    _serialInput = "";
     azimuthMotor.setCurrentPosition(0);
     elevationMotor.setCurrentPosition(0);
     delay(3000);
@@ -909,7 +948,7 @@ void initAE35()
 
     manualTimeInput_blocking();
     manualDateInput_blocking();
-    manualSatelliteInput_blocking();
+
 
 //
 };
@@ -927,6 +966,10 @@ void configAE35()
     long   lineNo, elemSetNo;
     String catNo, satellite, designator;
 
+    // sloppy function to input satellite choice
+    _flagSatelliteSet = 0;
+    manualSatelliteInput_blocking();
+    
     while (!found)
     {
         if (_keps[i].equals(_target)) found=true;
@@ -980,7 +1023,7 @@ void configAE35()
     lcd.print("decayRate * 10^6");
     lcd.setCursor(0,1);
     lcd.print((decayRate * 1000000.0));
-    delay(3000);
+    delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("inclination");
@@ -998,7 +1041,7 @@ void configAE35()
     lcd.print("eccentr. * 10^6");
     lcd.setCursor(0,1);
     lcd.print((eccentricity * 1000000.0)); 
-    delay(3000);
+    delay(500);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("argOfPerigee");
@@ -1024,28 +1067,6 @@ void configAE35()
     lcd.print(revolutionNumber); 
     delay(500);
     
-    Serial.println("epochYear");
-    Serial.println(epochYear); 
-    Serial.println("epochTime");
-    Serial.println(epochTime);
-    Serial.println("decayRate * 10^6");
-    Serial.println((decayRate * 1000000.0));
-    Serial.println("inclination");
-    Serial.println(inclination);
-    Serial.println("rightAscension");
-    Serial.println(rightAscension);  
-    Serial.println("eccentr. * 10^6");
-    Serial.println((eccentricity * 1000000.0));
-    Serial.println("argOfPerigee");
-    Serial.println(argOfPerigee);
-    Serial.println("meanAnomoly");
-    Serial.println(meanAnomoly);
-    Serial.println("meanMotion");
-    Serial.println(meanMotion); 
-    Serial.println("decayRate * 10^6");
-    Serial.println((decayRate * 1000000.0));
-    Serial.println("revolutionNumber");
-    Serial.println(revolutionNumber);
 
     time_t t = now();
     p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
@@ -1083,8 +1104,6 @@ void gpsLockAE35()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
-
-    // setTime(12,00,00,9,20,2015);
 
     lcd.clear();
     lcd.setCursor(0,0);
@@ -1125,10 +1144,11 @@ void homeAE35()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
+    if (_flagHomePositionSet) return;
+    
     azimuthMotor.setCurrentPosition(0);
     elevationMotor.setCurrentPosition(0);
-
-    if (!_flagHomePositionSet) { };
+    
     _flagHomePositionSet = 1;
 };
 
@@ -1139,8 +1159,9 @@ void stopAE35()
 #endif
 };
 
+void serialAE35() { };
 
-void (*states[NUMBEROFSTATES])() = { initAE35, configAE35, gpsLockAE35, driveAE35, trackAE35, homeAE35, stopAE35 } ;
+void (*states[NUMBEROFSTATES])() = { initAE35, configAE35, gpsLockAE35, driveAE35, trackAE35, homeAE35, serialAE35, stopAE35 } ;
 
 void updateState()
 {
@@ -1151,14 +1172,14 @@ void updateState()
     int i,j;
     unsigned short int flag;
 
-    _state_transition_flag |= _flagHomePositionSet;
-    _state_transition_flag |= ALWAYS;
+    _stateTransitionFlag |= _flagHomePositionSet;
+    _stateTransitionFlag |= ALWAYS;
 
     for (i=0; i<NUMBEROFSTATES; i++)
     {
-        if (transitions[_state][i] & _state_transition_flag)
+        if (transitions[_state][i] & _stateTransitionFlag)
         {
-            _state_transition_flag &= !(transitions[_state][i] & _state_transition_flag);
+            _stateTransitionFlag &= !(transitions[_state][i] & _stateTransitionFlag);
             _state = i;
             // lcd.setCursor(0,1); lcd.print(i);
             (*states[_state])();
