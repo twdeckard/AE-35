@@ -94,53 +94,56 @@ Plan13              p13;
 //
 String _keps[] =
 {
-    "2014-12-28",
-    "HUBBLE",
-    "1 20580U 90037B   15308.45560487  .00002158  00000-0  12608-3 0  9996",
-    "2 20580  28.4708 308.8893 0002648 304.5112 184.0287 15.07840717201004",
-    "ISS",
-    "1 25544U 98067A   15319.57746612  .00014090  00000-0  21211-3 0  9991",
-    "2 25544  51.6461  48.5120 0006315 139.5641 326.7652 15.55086969971595",
-    "IS2",            
-    "1 25544U 98067A   15320.15058293  .00014257  00000-0  21440-3 0  9997",
-    "2 25544  51.6460  45.6495 0006260 141.8189 295.1473 15.55104552971688",
-    "MOON2015_11",
-    "1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
-    "2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
-    "AO-07",
-    "1 07530U 74089B   15308.92431491 -.00000023  00000-0  13127-3 0  9996",
-    "2 07530 101.5414 280.4840 0012327 030.1971 351.6256 12.53617504874668",
-    "AO-73",
-    "1 39444U 13066AE  15309.15464776  .00001507  00000-0  19724-3 0  9997",
-    "2 39444  97.7143   6.6449 0060249  37.1727 323.3634 14.80585767104273",
-    "XW-2A",
-    "1 40903U 15049E   15309.85269854  .00007556  00000-0  23280-3 0  9991",
-    "2 40903  97.4536 317.5796 0015707 213.3133 268.3547 15.33793567  7131",
-    "XW-2C",
-    "1 40906U 15049H   15309.86646862  .00003108  00000-0  18212-3 0  9991",
-    "2 40906  97.4557 316.9462 0017867  91.3943 353.0725 15.12395146  7084",
-    "LILACSAT-2",
-    "1 40908U 15049K   15309.88333928  .00002284  00000-0  13702-3 0  9994",
-    "2 40908  97.4627 316.9629 0018537  85.4385 359.3742 15.11801067  7089",
-    "XW-2E",
-    "1 40909U 15049L   15309.85726856  .00004706  00000-0  27109-3 0  9995",
-    "2 40909  97.4561 316.9585 0017320  94.4786 349.3912 15.12760900  7081",
-    "AO-27",
-    "1 22825U 93061C   15307.93286803  .00000103  00000-0  57299-4 0  9993",
-    "2 22825 098.7267 258.1938 0007315 259.0593 100.9766 14.29914069152636",
-    "SO-50",
-    "1 27607U 02058C   15308.94235219  .00000645  00000-0  11160-3 0  9996",
-    "2 27607 064.5533 128.9524 0082601 261.4106 097.7631 14.74903884691915",
-    "AO-51",
-    "1 28375U 04025K   15307.88059361  .00000181  00000-0  66721-4 0  9998",
-    "2 28375 098.3053 244.3918 0081442 267.7720 091.4142 14.41714835596555",
-    "XW-2D",
-    "1 40907U 15049J   15309.80212380  .00003171  00000-0  18597-3 0  9996",
-    "2 40907  97.4527 316.8600 0017349  90.2694 355.8372 15.12348934  7071",
-    "TEST",
-    "1 25544U 98067A   08264.51782528 -.00002182  00000-0 -11606-4 0  2927",
-    "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537",
-    "END",
+"2015-11-22",
+"HUBBLE",
+"1 20580U 90037B   15308.45560487  .00002158  00000-0  12608-3 0  9996",
+"2 20580  28.4708 308.8893 0002648 304.5112 184.0287 15.07840717201004",
+"ISS",
+"1 25544U 98067A   15323.56921446  .00018904  00000-0  28041-3 0  9991",
+"2 25544  51.6450  28.5814 0006290 152.6519 356.6456 15.55239746972210",
+"MOON2015_11",
+"1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
+"2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
+"FO-29",
+"1 24278U 96046B   15322.84477057  .00000006  00000-0  40894-4 0  9998",
+"2 24278  98.5646 270.8720 0350976  30.0992  21.4518 13.53060378950946",
+"AO-73",
+"1 39444U 13066AE  15322.87353904  .00001603  00000-0  20942-3 0  9992",
+"2 39444 097.7123 019.8359 0059120 352.6005 007.4329 14.80630332105717",
+"EO-79",
+"1 40025U 14033R   15323.68957936  .00002024  00000-0  22884-3 0  9994",
+"2 40025  97.9393 224.0784 0013846  39.8494 320.3736 14.87549197 76900",
+"XW-2A",
+"1 40903U 15049E   15323.81209640  .00008866  00000-0  27050-3 0  9994",
+"2 40903  97.4535 331.6657 0016993 161.4437 315.3446 15.34028666  9271",
+"XW-2C",
+"1 40906U 15049H   15323.76045139  .00004684  00000-0  27165-3 0  9993",
+"2 40906  97.4554 330.5189 0017561  48.0555  38.9239 15.12514737  9189",
+"XW-2E",
+"1 40909U 15049L   15323.82070924  .00006520  00000-0  37230-3 0  9998",
+"2 40909  97.4555 330.6058 0017098  50.7875  73.2675 15.12933881  9191",
+"NO-44",
+"1 26931U 01043C   15323.45331922  .00000099  00000-0  69935-4 0  9996",
+"2 26931  67.0493 136.5664 0006697 276.9610  83.0729 14.30361042738003",
+"SO-50",
+"1 27607U 02058C   15322.84217690  .00001068  00000-0  17106-3 0  9990",
+"2 27607  64.5550  86.4971 0082302 258.7912 100.3931 14.74931981694095",
+"AO-51",
+"1 28375U 04025K   15323.38078738  .00000170  00000-0  63277-4 0  9991",
+"2 28375  98.3112 259.4755 0081976 220.4782 260.7991 14.41721314598851",
+"SPROUT",
+"1 39770U 14029E   15323.12177538  .00004189  00000-0  50368-3 0  9997",
+"2 39770  97.8736  57.8959 0010514  58.6984 301.5230 14.84437654 80617",
+"NO-84",
+"1 40654U 15025X   15323.32524735  .00023965  00000-0  57811-3 0 01898",
+"2 40654 054.9946 265.3083 0226176 270.4049 087.1051 15.18852727027709",
+"XW-2B",
+"1 40911U 15049N   15323.76156155  .00004525  00000-0  26276-3 0  9996",
+"2 40911  97.4577 330.5293 0017006  46.4096  40.5209 15.12496097  9085",
+"AO-85",
+"1 40967U 15058D   15323.50196694  .00001732  00000-0  19539-3 0 00443",
+"2 40967 064.7773 164.5226 0217735 269.2432 088.3721 14.74416702006068",
+"END",
 };
 
 #define AZIMUTH_MOTOR_STEPS_PER_REV         200
@@ -248,12 +251,14 @@ void readbtns()
     else if (abs(adc - LCD_BUTTON__DOWN__ANALOG_VALUE)<LCD_BUTTON_ANALOG_INPUTS_TOLERANCE) _lcd_button_now = LCD_BUTTON_DOWN;
     else if (abs(adc - LCD_BUTTON_SELECT_ANALOG_VALUE)<LCD_BUTTON_ANALOG_INPUTS_TOLERANCE) _lcd_button_now = LCD_BUTTON_SELECT;
 
-    _lcd_button_debounce = _lcd_button_now; // no debouncing
+    if (_lcd_button_debounce != _lcd_button_now) {
+      _stateTransitionFlag |= _lcd_button_now;
+    }
+    _lcd_button_debounce = _lcd_button_now; 
     /*
     _stateTransitionFlag &= !(LCD_BUTTON_NONE | LCD_BUTTON_RIGHT | LCD_BUTTON_LEFT | LCD_BUTTON_UP | LCD_BUTTON_DOWN |
                                 LCD_BUTTON_SELECT);  // one button command at a time
     */
-    _stateTransitionFlag |= _lcd_button_debounce;
 
 } ;
 
@@ -266,7 +271,7 @@ void pollGPS()                            // GPS shield is not integrated
 
     time_t t = now();
     _gps_debug_temporary += 1;
-    if (_gps_debug_temporary > 50)
+    if (_gps_debug_temporary > 30)
     {
         _latitude  =  44.884860;          // grid square EN34FV 
         _longitude = -93.551492;
@@ -297,18 +302,22 @@ void buttonCommand()
         case LCD_BUTTON_UP:
             _targetElevation = round(_targetElevation + 1.0);
             _targetElevation = min(_targetElevation,80.0);
+            _targetElevation = max(_targetElevation,0.0);
             break;
         case LCD_BUTTON_DOWN:
             _targetElevation = round(_targetElevation - 1.0);
             _targetElevation = max(_targetElevation,0.0);
+            _targetElevation = min(_targetElevation,80.0);
             break;
         case LCD_BUTTON_RIGHT:
             _targetAzimuth = round(_targetAzimuth + 1.0);
             _targetAzimuth  =  min(_targetAzimuth,350.0);
+            _targetAzimuth   = max(_targetAzimuth,0.0);
             break;
         case LCD_BUTTON_LEFT:
             _targetAzimuth = round(_targetAzimuth - 1.0);
             _targetAzimuth   = max(_targetAzimuth,0.0);
+            _targetAzimuth  =  min(_targetAzimuth,350.0);
             break;
         };
 
@@ -370,7 +379,7 @@ void updateLCD()
     lcd.print(buffer);
 
     lcd.setCursor(0,1);
-    lcd.print(_target);
+    lcd.print(_target.substring(0,4));
 
     if (!_flagHomePositionSet)
     {
@@ -431,13 +440,14 @@ void motorCommand()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
-
+// bounds checking belongs here
+//
     azimuthMotor.moveTo(_commandAzSteps);       // Note: original executive was throttled to a maximum of 50 steps/second
-    azimuthMotor.setMaxSpeed(50);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
-    azimuthMotor.setAcceleration(10.0);         // 
+    azimuthMotor.setMaxSpeed(65);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
+    azimuthMotor.setAcceleration(25.0);         // 
     elevationMotor.moveTo(_commandElSteps);
-    elevationMotor.setMaxSpeed(50);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
-    elevationMotor.setAcceleration(10.0);       //
+    elevationMotor.setMaxSpeed(65);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
+    elevationMotor.setAcceleration(25.0);       //
 }
 
 void moveMotors()
@@ -524,7 +534,7 @@ void serialCommand() {
     char c = (char)Serial.read();
     // add it to the inputString:
     _serialInput += c;
-   if ((c == '\n') && (_serialInput.length()>2 )) {
+   if (((c == '\n') || (c == '\r') || (c == ' ')) && (_serialInput.length()>2 )) {
         _serialInput.toUpperCase();
         if (_serialInput.startsWith("AZ")) {
              _commandAzimuth = _targetAzimuth = _serialInput.substring(2,_serialInput.length()-2).toFloat(); 
@@ -549,7 +559,6 @@ void serialCommand() {
 
 #define UPDNRTLF    (LCD_BUTTON_UP | LCD_BUTTON_DOWN | LCD_BUTTON_LEFT | LCD_BUTTON_RIGHT)
 #define SEL         (LCD_BUTTON_SELECT)
-#define SEL         (LCD_BUTTON_SELECT)
 #define HOM         (HOME_POSITION_SET)
 #define SER         (SERIAL_DATA)
 
@@ -560,7 +569,7 @@ unsigned short int transitions[NUMBEROFSTATES][NUMBEROFSTATES] =
     /* CNFG   */        NEVER,      NEVER,        ALWAYS,    NEVER,     NEVER,     NEVER,      NEVER,   NEVER,
     /* GPSL   */        NEVER,      NEVER,        NEVER,    GPS_LOCK,   NEVER,     NEVER,      NEVER,   NEVER,
     /* DRIV   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     SEL,        SER,     NEVER,
-    /* TRAC   */        NEVER,      NEVER,        NEVER,    UPDNRTLF,   NEVER,     NEVER,      SER,     NEVER,
+    /* TRAC   */        NEVER,      SEL,          NEVER,    UPDNRTLF,   NEVER,     NEVER,      SER,     NEVER,
     /* HOME   */        NEVER,      NEVER,        NEVER,     NEVER,     ALWAYS,    NEVER,      NEVER,   NEVER,
     /* SERL   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER, 
     /* STOP   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER,
@@ -634,6 +643,8 @@ void manualSatelliteInput_blocking()
         delay(50);
     }
     lcd.noBlink();
+    _stateTransitionFlag = 0;
+    _lcd_button_debounce = 0;
 }
 
 
@@ -760,6 +771,8 @@ void manualDateInput_blocking()
 
     }
     lcd.noBlink();
+    _stateTransitionFlag = 0;
+    _lcd_button_debounce = 0;
 }
 
 //
@@ -904,6 +917,8 @@ void manualTimeInput_blocking()
         delay(50);
     }
     lcd.noBlink();
+    _stateTransitionFlag = 0;
+    _lcd_button_debounce = 0;
 }
 
 void initAE35()
@@ -1011,61 +1026,61 @@ void configAE35()
     lcd.print("epochYear");
     lcd.setCursor(0,1);
     lcd.print(epochYear);
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("epochTime");
     lcd.setCursor(0,1);
     lcd.print(epochTime);
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("decayRate * 10^6");
     lcd.setCursor(0,1);
     lcd.print((decayRate * 1000000.0));
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("inclination");
     lcd.setCursor(0,1);
     lcd.print(inclination);
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("rightAscension");
     lcd.setCursor(0,1);
     lcd.print(rightAscension); 
-    delay(500); 
+    delay(300); 
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("eccentr. * 10^6");
     lcd.setCursor(0,1);
     lcd.print((eccentricity * 1000000.0)); 
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("argOfPerigee");
     lcd.setCursor(0,1);
     lcd.print(argOfPerigee); 
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("meanAnomoly");
     lcd.setCursor(0,1);
     lcd.print(meanAnomoly); 
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("meanMotion");
     lcd.setCursor(0,1);
     lcd.print(meanMotion); 
-    delay(500);
+    delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("revolutionNumber");
     lcd.setCursor(0,1);
     lcd.print(revolutionNumber); 
-    delay(500);
+    delay(300);
     
 
     time_t t = now();
@@ -1144,6 +1159,15 @@ void homeAE35()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
+
+#if 0
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("[homeAE35]");
+    lcd.setCursor(1,0);
+    lcd.print(_stateTransitionFlag); 
+#endif 
+    
     if (_flagHomePositionSet) return;
     
     azimuthMotor.setCurrentPosition(0);
