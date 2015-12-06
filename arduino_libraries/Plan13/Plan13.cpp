@@ -404,6 +404,20 @@ void Plan13::setLocation(double observer_lon_in, double observer_lat_in, int hei
 		observer_height = 60;
 	}
 }
+// TWD, floating point seconds 
+void Plan13::setPrecisionTime(int yearIn, int monthIn, int mDayIn, int hourIn, int minIn, double secIn) {
+  
+     int aYear = yearIn;
+     int aMonth = monthIn;
+     int aMday = mDayIn;
+     int aHour = hourIn;
+     int aMin  = minIn;
+     double aSec  = secIn;
+    
+     DN = FNday(aYear, aMonth, aMday);
+     TN = ((double)aHour + ((double)aMin + (aSec/60.0)) /60.0)/24.0;
+     DN = (long)DN;
+}
 
 void Plan13::setTime(int yearIn, int monthIn, int mDayIn, int hourIn, int minIn, int secIn) {
   if (DEBUG) {
