@@ -61,7 +61,7 @@
 
 void  satTrackLCD(), pollGPS(), currentMotorPos(), updateSat(), trackCommand(), currentMotorPos(), 
       satTrackButtons(),  processSerial1(), stepsAzElToMotors(),  targetAzElToCmd(), cmdAzElToSteps(), 
-      stepsAzElToMotors(), checkSerial1(), readBtn();
+      stepsAzElToMotors(), checkSerial1(), readBtn(), readSwtch();
 
 // typedefs with arrays make the compiler sad
 
@@ -79,6 +79,9 @@ unsigned long int            _fastTimer;
 unsigned long int            _mediumTimer;
 unsigned long int            _slowTimer;
 unsigned long int            _tempMaxElapsed = 0;
+
+unsigned long int            _seconds = 0;
+unsigned long int            _milliseconds = 0;
 
 double                      _currentAzimuth;
 double                      _currentElevation;
@@ -98,6 +101,9 @@ long int                    _commandElSteps;
 double                      _latitude;
 double                      _longitude;
 
+double                      _maxElSpeed; 
+double                      _maxAzSpeed; 
+
 String                      _target;
 String                      _serialInput;       // repetitive string commmands may be perilous 
 
@@ -107,6 +113,7 @@ unsigned short int          _lcd_button_now = 0;
 unsigned short int          _lcd_button_prev = 0;
 boolean                     _flagHomePositionSet = 0;
 
+unsigned short int          _limit_switch = 0;
 unsigned short int          _lcd_button_debounce = 0;
 unsigned short int          _adc_debug_temporary = 0;
 unsigned short int          _gps_debug_temporary = 0;
@@ -126,8 +133,8 @@ String _keps[] =
 "1 20580U 90037B   15308.45560487  .00002158  00000-0  12608-3 0  9996",
 "2 20580  28.4708 308.8893 0002648 304.5112 184.0287 15.07840717201004",
 "ISS",
-"1 25544U 98067A   15323.56921446  .00018904  00000-0  28041-3 0  9991",
-"2 25544  51.6450  28.5814 0006290 152.6519 356.6456 15.55239746972210",
+"1 25544U 98067A   15338.53784929  .00012890  00000-0  19910-3 0  9990",
+"2 25544  51.6437 313.8919 0008374 237.4954 228.2248 15.54451748974549",
 "MOON2015_11",
 "1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
 "2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
@@ -170,7 +177,20 @@ String _keps[] =
 #define AZIMUTH_MOTOR_STEPS_PER_REV         200
 #define ELEVATION_MOTOR_STEPS_PER_REV       200
 #define AZIMUTH_GIMBAL_STEPS_PER_DEGREE     (1180.0 / 90.0)
-#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   (1760.0 / 45.0)
+#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   (2000.0 / 50.0)
+
+#define AZIMUTH_MOTOR_MAX_STEPS             (3000)
+#define AZIMUTH_MOTOR_MIN_STEPS             (-3000)
+#define ELEVATION_MOTOR_MAX_STEPS           (2100)
+#define ELEVATION_MOTOR_MIN_STEPS           (0)
+#define ELEVATION_GIMBAL_MAX_ELEVATION      (50)
+
+#define MAX_EL_SPEED_MANUAL                 (60)
+#define MAX_EL_SPEED_TRACK                  (60)
+#define MAX_EL_SPEED_HOME                   (30)
+#define MAX_AZ_SPEED_MANUAL                 (60)
+#define MAX_AZ_SPEED_TRACK                  (60)
+#define MAX_AZ_SPEED_HOME                   (30)
 
 void readBtn();
 
@@ -189,6 +209,8 @@ LiquidCrystal lcd(28,11,24,25,26,27);
 #define LCD_BUTTON___UP___ANALOG_VALUE            143
 #define LCD_BUTTON_SELECT_ANALOG_VALUE            741
 #define LCD_BUTTON__NONE__ANALOG_VALUE            1023
+
+#define LIMIT_SWITCH_EL_MAX                       2
 
 #define LCD_BUTTON_NONE                           2
 #define LCD_BUTTON_RIGHT                          4
@@ -226,6 +248,13 @@ void readBtn()
     _lcd_button_debounce = _lcd_button_now; 
 
 } ;
+
+void readSwtch()
+{
+     if (digitalRead(31)==HIGH) _limit_switch |= LIMIT_SWITCH_EL_MAX;   // no debounce, should really walk off the switch
+}
+
+
 
 void pollGPS()                            // GPS shield is not integrated
 {
@@ -407,6 +436,23 @@ void backwardstep_motor2()
 AccelStepper azimuthMotor(forwardstep_motor2, backwardstep_motor2);
 AccelStepper elevationMotor(forwardstep_motor1, backwardstep_motor1);
 
+void switchCmd()
+{
+      if ((_limit_switch & LIMIT_SWITCH_EL_MAX) == LIMIT_SWITCH_EL_MAX)
+          {
+          elevationMotor.stop();
+          azimuthMotor.stop();
+          // Keep the L293D from frying while we debug, antenna position may drift
+          motor2.release();
+          motor1.release();
+          
+          elevationMotor.setCurrentPosition(ELEVATION_MOTOR_MAX_STEPS);
+          azimuthMotor.setCurrentPosition(0);
+
+          _flagHomePositionSet = 1; 
+          _stateTransitionFlag |= HOME_POSITION_SET;
+          }
+}
 
 void movAzElMotors()
 {
@@ -422,12 +468,22 @@ void movAzElMotors()
 
 void updateSat()
 {
+   double seconds;
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
 
     time_t t = now();
-    p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
+    // use running tally of milliseconds to smooth satellite motion (doesn't increase actual time precision)
+
+    Serial.println(second(t));
+    Serial.println(millis());
+    
+    seconds = (double)second(t) + min(((double)_milliseconds / 1000.0),(double)(999.0/1000.00)); 
+   
+    // modified PLAN13 library, use floating point seconds to smooth antenna motion 
+    p13.setPrecisionTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),seconds);
+    // p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
     p13.satvec();
     p13.rangevec();
 
@@ -447,7 +503,7 @@ void targetAzElToCmd()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
-  _commandElevation = min(max(_targetElevation,5.0),80.0);
+  _commandElevation = min(max(_targetElevation,5.0),ELEVATION_GIMBAL_MAX_ELEVATION);
 
   if (_targetAzimuth > 180.0) {
     _commandAzimuth = - (360.0 - _targetAzimuth);
@@ -459,17 +515,21 @@ void targetAzElToCmd()
 void cmdAzElToSteps()
 {
     _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
+    _commandElSteps = max(_commandElSteps,ELEVATION_MOTOR_MIN_STEPS);
+    _commandElSteps = min(_commandElSteps,ELEVATION_MOTOR_MAX_STEPS);
     _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE);
+    _commandAzSteps = max(_commandAzSteps,AZIMUTH_MOTOR_MIN_STEPS);
+    _commandAzSteps = min(_commandAzSteps,AZIMUTH_MOTOR_MAX_STEPS);
 }
 
 void stepsAzElToMotors()
 {
     azimuthMotor.moveTo(_commandAzSteps);       // Note: original executive was throttled to a maximum of 50 steps/second
-    azimuthMotor.setMaxSpeed(65);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
-    azimuthMotor.setAcceleration(25.0);         //
+    azimuthMotor.setMaxSpeed(_maxAzSpeed);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
+    azimuthMotor.setAcceleration(200.0);         // "but they're so small they're evading our turbolasers."
     elevationMotor.moveTo(_commandElSteps);
-    elevationMotor.setMaxSpeed(65);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
-    elevationMotor.setAcceleration(25.0);       //
+    elevationMotor.setMaxSpeed(_maxElSpeed);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
+    elevationMotor.setAcceleration(200.0);       //
 }
 
 void currentMotorPos()
@@ -560,7 +620,7 @@ unsigned short int transitions[NUMBEROFSTATES][NUMBEROFSTATES] =
     /* GPSL   */        NEVER,      NEVER,        NEVER,    GPS_LOCK,   NEVER,     NEVER,      NEVER,   NEVER,
     /* DRIV   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     SEL,        SER,     NEVER,
     /* TRAC   */        NEVER,      SEL,          NEVER,    UPDNRTLF,   NEVER,     NEVER,      SER,     NEVER,
-    /* HOME   */        NEVER,      NEVER,        NEVER,     NEVER,     ALWAYS,    NEVER,      NEVER,   NEVER,
+    /* HOME   */        NEVER,      NEVER,        NEVER,     NEVER,     HOM,       NEVER,      NEVER,   NEVER,
     /* SERL   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER, 
     /* STOP   */        NEVER,      NEVER,        NEVER,     NEVER,     NEVER,     NEVER,      NEVER,   NEVER,
 };
@@ -576,18 +636,18 @@ void (*slow[5][NUMBEROFSTATES])()
       
 void (*medium[5][NUMBEROFSTATES])()
     /*  INIT           CNFG            GPSL          DRIV           TRAC           HOM          SERL        STOP  */
-    = {   noop,          noop,           noop,    satTrackButtons,  satTrackButtons,  noop,   processSerial1,   noop,
-          noop,          noop,           noop,  stepsAzElToMotors,  targetAzElToCmd,  noop,   targetAzElToCmd,  noop,
-          noop,          noop,           noop,         noop,        cmdAzElToSteps,   noop,   cmdAzElToSteps,   noop,
-          noop,          noop,           noop,         noop,       stepsAzElToMotors, noop,  stepsAzElToMotors, noop,
-          noop,          noop,           noop,         noop,          checkSerial1,   noop,        noop,       noop
+    = {   noop,          noop,       noop,  satTrackButtons, satTrackButtons, stepsAzElToMotors, processSerial1, noop,
+          noop,          noop,       noop,  stepsAzElToMotors, targetAzElToCmd,   noop,   targetAzElToCmd,        noop,
+          noop,          noop,       noop,         noop,        cmdAzElToSteps,   noop,   cmdAzElToSteps,        noop,
+          noop,          noop,       noop,         noop,       stepsAzElToMotors, noop,  stepsAzElToMotors,      noop,
+          noop,          noop,       noop,         noop,          checkSerial1,   noop,        noop,             noop
       };
 
 void (*fast[5][NUMBEROFSTATES])()
-    = {  readBtn,       readBtn,       readBtn,      readBtn,       readBtn,       readBtn,   movAzElMotors,  noop,
-         noop,           noop,           noop,     movAzElMotors,   movAzElMotors,  noop,         noop,       noop,
-         noop,           noop,           noop,         noop,          noop,         noop,         noop,       noop,
-         noop,           noop,           noop,         noop,          noop,         noop,         noop,       noop,
+    = {  readSwtch,    readSwtch,     readSwtch,    readSwtch,     readSwtch,     readSwtch,   readSwtch,     noop,
+         readBtn,       readBtn,       readBtn,      readBtn,       readBtn,      switchCmd,   movAzElMotors,  noop,
+         noop,           noop,           noop,     movAzElMotors, movAzElMotors,   readBtn,       noop,       noop,
+         noop,           noop,           noop,         noop,          noop,      movAzElMotors,   noop,       noop,
          noop,           noop,           noop,         noop,          noop,         noop,         noop,       noop
       };
 
@@ -599,7 +659,7 @@ void manualSatelliteInput_blocking()
     int debounce_counter = 4;
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("Set Satellite");
+    lcd.print(F("Set Satellite"));
     lcd.blink();
 
     while (!_flagSatelliteSet)
@@ -658,7 +718,7 @@ void manualDateInput_blocking()
 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("Set Date  (GMT)");
+    lcd.print(F("Set Date  (GMT)"));
     lcd.blink();
 
     while (!_flagDateSetManually)
@@ -791,7 +851,7 @@ void manualTimeInput_blocking()
 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("Set Time (GMT)");
+    lcd.print(F("Set Time (GMT)"));
     lcd.blink();
 
     time_t t = now();
@@ -927,13 +987,14 @@ void initAE35()
     _stateTransitionFlag = 0;
     _flagHomePositionSet = 0;
 
+    pinMode(31,INPUT_PULLUP);
     setTime(23,30,00,11,10,15);
     Serial.begin(9600);
-    Serial.print("Hello World!");
+    Serial.print(F("Hello World!"));
     lcd.begin(16, 2);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("AE-35 Antenna");
+    lcd.print(F("AE-35 Antenna"));
     lcd.setCursor(0,1);
     lcd.print(__DATE__);
     _serialInput = "";
@@ -993,61 +1054,61 @@ void configAE35()
 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("epochYear");
+    lcd.print(F("epochYear"));
     lcd.setCursor(0,1);
     lcd.print(epochYear);
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("epochTime");
+    lcd.print(F("epochTime"));
     lcd.setCursor(0,1);
     lcd.print(epochTime);
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("decayRate * 10^6");
+    lcd.print(F("decayRate * 10^6"));
     lcd.setCursor(0,1);
     lcd.print((decayRate * 1000000.0));
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("inclination");
+    lcd.print(F("inclination"));
     lcd.setCursor(0,1);
     lcd.print(inclination);
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("rightAscension");
+    lcd.print(F("rightAscension"));
     lcd.setCursor(0,1);
     lcd.print(rightAscension); 
     delay(300); 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("eccentr. * 10^6");
+    lcd.print(F("eccentr. * 10^6"));
     lcd.setCursor(0,1);
     lcd.print((eccentricity * 1000000.0)); 
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("argOfPerigee");
+    lcd.print(F("argOfPerigee"));
     lcd.setCursor(0,1);
     lcd.print(argOfPerigee); 
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("meanAnomoly");
+    lcd.print(F("meanAnomoly"));
     lcd.setCursor(0,1);
     lcd.print(meanAnomoly); 
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("meanMotion");
+    lcd.print(F("meanMotion"));
     lcd.setCursor(0,1);
     lcd.print(meanMotion); 
     delay(300);
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("revolutionNumber");
+    lcd.print(F("revolutionNumber"));
     lcd.setCursor(0,1);
     lcd.print(revolutionNumber); 
     delay(300);
@@ -1090,9 +1151,9 @@ void gpsLockAE35()
 
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("AE-35 Antenna");
+    lcd.print(F("AE-35 Antenna"));
     lcd.setCursor(0,1);
-    lcd.print("configure GPS");
+    lcd.print(F("configure GPS"));
 };
 
 void driveAE35()
@@ -1100,6 +1161,8 @@ void driveAE35()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
+    _maxElSpeed = MAX_EL_SPEED_MANUAL;
+    _maxAzSpeed = MAX_AZ_SPEED_MANUAL;
 };
 
 void trackAE35()
@@ -1108,6 +1171,9 @@ void trackAE35()
     Serial.println(__func__);
 #endif
 
+    _maxElSpeed = MAX_EL_SPEED_TRACK;
+    _maxAzSpeed = MAX_AZ_SPEED_TRACK;
+    
     time_t t = now();
     p13.setTime(year(t),month(t),day(t),hour(t),minute(t),second(t));
     p13.satvec();
@@ -1127,12 +1193,19 @@ void homeAE35()
     Serial.println(__func__);
 #endif
     
-    if (_flagHomePositionSet) return;
-    
-    azimuthMotor.setCurrentPosition(0);
+    if (_flagHomePositionSet) {
+      _stateTransitionFlag |= HOME_POSITION_SET;
+      return;
+    }
+
+    _maxElSpeed = MAX_EL_SPEED_HOME;
+    _maxAzSpeed = MAX_AZ_SPEED_HOME;
+
+    azimuthMotor.setCurrentPosition(0);       // will re-zero when actually home
     elevationMotor.setCurrentPosition(0);
-    
-    _flagHomePositionSet = 1;
+
+    _commandAzSteps = 0;
+    _commandElSteps = (ELEVATION_MOTOR_MAX_STEPS);
 };
 
 void stopAE35()
@@ -1154,8 +1227,6 @@ void updateState()
 #endif
     int i,j;
     unsigned short int flag;
-
-    _stateTransitionFlag |= _flagHomePositionSet;
     _stateTransitionFlag |= ALWAYS;
 
     for (i=0; i<NUMBEROFSTATES; i++)
@@ -1198,6 +1269,7 @@ void loop ()
 
     short int           i;
     unsigned long int   elapsed;
+    time_t              t = now(); 
 
     updateState();
 
@@ -1225,54 +1297,62 @@ void loop ()
         for (i=0; i<5; i++) (*slow[i][_state])();
         _slowTimer = 0;
     }
-     
+  
+   
+   // running tally of elapsed milliseconds, used to smooth satellite position computations 
+   _milliseconds += elapsed; 
+   if (_seconds != second(t)) {
+      _milliseconds = 0;
+      _seconds = second(t);
+   }
+    
     // NO CHECK FOR 1202 error
     // delay (max((long)(20 - (millis() - _ms)),0));  // original exec would sleep off the unused time every 20ms  
-    azimuthMotor.run();                               // now always try to advance the stepper motors if the executive is spinning 
-    elevationMotor.run();                             
+    azimuthMotor.run();                            // now always try to advance the stepper motors if the executive is spinning 
+    elevationMotor.run();        
 }
 
 void debugP13keps()
 {
 
-    Serial.print("p13.LA = ");
+    Serial.print(F("p13.LA = "));
     Serial.println(p13.LA,8);
-    Serial.print("p13.LO = ");
+    Serial.print(F("p13.LO = "));
     Serial.println(p13.LO,8);
     Serial.println("");
-    Serial.print("p13.DN = ");
+    Serial.print(F("p13.DN = "));
     Serial.println(p13.DN,8);
-    Serial.print("p13.TN = ");
+    Serial.print(F("p13.TN = "));
     Serial.println(p13.TN);
     Serial.println("");
 
-    Serial.print("p13.YE = ");
+    Serial.print(F("p13.YE = "));
     Serial.println(p13.YE,8);
-    Serial.print("p13.TE = ");
+    Serial.print(F("p13.TE = "));
     Serial.println(p13.TE,8);
-    Serial.print("p13.IN = ");
+    Serial.print(F("p13.IN = "));
     Serial.println(p13.IN,8);
-    Serial.print("p13.RA = ");
+    Serial.print(F("p13.RA = "));
     Serial.println(p13.RA,8);
-    Serial.print("p13.EC = ");
+    Serial.print(F("p13.EC = "));
     Serial.println(p13.EC,8);
-    Serial.print("p13.WP = ");
+    Serial.print(F("p13.WP = "));
     Serial.println(p13.WP,8);
-    Serial.print("p13.MA = ");
+    Serial.print(F("p13.MA = "));
     Serial.println(p13.MA,8);
-    Serial.print("p13.MM = ");
+    Serial.print(F("p13.MM = "));
     Serial.println(p13.MM,8);
-    Serial.print("p13.M2 = ");
+    Serial.print(F("p13.M2 = "));
     Serial.println(p13.M2,8);
-    Serial.print("p13.RV = ");
+    Serial.print(F("p13.RV = "));
     Serial.println(p13.RV,8);
-    Serial.print("p13.ALON=");
+    Serial.print(F("p13.ALON="));
     Serial.println(p13.ALON,8);
     Serial.println("");
 
-    Serial.print("p13.DE = ");
+    Serial.print(F("p13.DE = "));
     Serial.println(p13.DE,8);
-    Serial.print("p13.TE = ");
+    Serial.print(F("p13.TE = "));
     Serial.println(p13.TE,8);
     Serial.println("");
 }
