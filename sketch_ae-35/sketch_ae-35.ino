@@ -1,11 +1,10 @@
-// note requires a fork of AFMotor library
-// to remap pins to slot 4 of DFRobot mega
-// multi expansion shield
-//
+// requires fork of AFMotor to remap shift reg pins to slot 4 for DFRobot mega multi expansion shield
 #include <AFMotor.h>
+// requires fork of Time for sub second resolution
 #include <Time.h>
 #include <AccelStepper.h>
 #include <LiquidCrystal.h>
+// requires fork of PLAN13 for fractional seconds input for smooth'er motion
 #include <Plan13.h>
 
 
@@ -78,10 +77,6 @@ unsigned long int            _lastms = 0;
 unsigned long int            _fastTimer;
 unsigned long int            _mediumTimer;
 unsigned long int            _slowTimer;
-unsigned long int            _tempMaxElapsed = 0;
-
-unsigned long int            _seconds = 0;
-unsigned long int            _milliseconds = 0;
 
 double                      _currentAzimuth;
 double                      _currentElevation;
@@ -109,17 +104,22 @@ String                      _serialInput;       // repetitive string commmands m
 
 
 String                      _stateLabels[] = { "INIT", "CNFG", "GPSL", "DRIV", "TRAC", "HOME", "SERL", "STOP"};
+
 unsigned short int          _lcd_button_now = 0;
 unsigned short int          _lcd_button_prev = 0;
-boolean                     _flagHomePositionSet = 0;
-
-unsigned short int          _limit_switch = 0;
 unsigned short int          _lcd_button_debounce = 0;
+
+
+
+unsigned short int          _limitSwitch = 0;
+
 unsigned short int          _adc_debug_temporary = 0;
 unsigned short int          _gps_debug_temporary = 0;
-unsigned short int          _flagTimeSetManually = 0;
-unsigned short int          _flagDateSetManually = 0;
-unsigned short int          _flagSatelliteSet = 0;
+
+boolean                     _flagTimeSetManually = 0;
+boolean                     _flagDateSetManually = 0;
+boolean                     _flagSatelliteSet = 0;
+boolean                     _flagHomePositionSet = 0;
 
 
 Plan13              p13;
@@ -166,8 +166,8 @@ String _keps[] =
 "1 39770U 14029E   15323.12177538  .00004189  00000-0  50368-3 0  9997",
 "2 39770  97.8736  57.8959 0010514  58.6984 301.5230 14.84437654 80617",
 "NO-84",
-"1 40654U 15025X   15323.32524735  .00023965  00000-0  57811-3 0 01898",
-"2 40654 054.9946 265.3083 0226176 270.4049 087.1051 15.18852727027709",
+"1 40654U 15025X   15336.15621742  .00014546  00000-0  35274-3 0 02007",
+"2 40654 054.9965 209.1907 0224949 302.4861 055.4602 15.19293577029654",
 "AO-85",
 "1 40967U 15058D   15323.50196694  .00001732  00000-0  19539-3 0 00443",
 "2 40967 064.7773 164.5226 0217735 269.2432 088.3721 14.74416702006068",
@@ -177,7 +177,7 @@ String _keps[] =
 #define AZIMUTH_MOTOR_STEPS_PER_REV         200
 #define ELEVATION_MOTOR_STEPS_PER_REV       200
 #define AZIMUTH_GIMBAL_STEPS_PER_DEGREE     (1180.0 / 90.0)
-#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   (2000.0 / 50.0)
+#define ELEVATION_GIMBAL_STEPS_PER_DEGREE   ((2000.0) / 50.0)
 
 #define AZIMUTH_MOTOR_MAX_STEPS             (3000)
 #define AZIMUTH_MOTOR_MIN_STEPS             (-3000)
@@ -251,7 +251,7 @@ void readBtn()
 
 void readSwtch()
 {
-     if (digitalRead(31)==HIGH) _limit_switch |= LIMIT_SWITCH_EL_MAX;   // no debounce, should really walk off the switch
+     if (digitalRead(31)==HIGH) _limitSwitch |= LIMIT_SWITCH_EL_MAX;   // no debounce, should really walk off the switch
 }
 
 
@@ -295,26 +295,21 @@ void satTrackButtons()
         {
         case LCD_BUTTON_UP:
             _targetElevation = round(_targetElevation + 1.0);
-            _targetElevation = min(_targetElevation,80.0);
-            _targetElevation = max(_targetElevation,0.0);
             break;
         case LCD_BUTTON_DOWN:
             _targetElevation = round(_targetElevation - 1.0);
-            _targetElevation = max(_targetElevation,0.0);
-            _targetElevation = min(_targetElevation,80.0);
             break;
         case LCD_BUTTON_RIGHT:
             _targetAzimuth = round(_targetAzimuth + 1.0);
-            _targetAzimuth  =  min(_targetAzimuth,350.0);
-            _targetAzimuth   = max(_targetAzimuth,0.0);
             break;
         case LCD_BUTTON_LEFT:
             _targetAzimuth = round(_targetAzimuth - 1.0);
-            _targetAzimuth   = max(_targetAzimuth,0.0);
-            _targetAzimuth  =  min(_targetAzimuth,350.0);
             break;
         };
-
+        _targetElevation = max(_targetElevation,0.0);
+        _targetElevation = min(_targetElevation,50.0);
+        _targetAzimuth   = max(_targetAzimuth,-90.0);
+        _targetAzimuth  =  min(_targetAzimuth,450.0);
         _commandElevation = _targetElevation;
         _commandAzimuth = _targetAzimuth;
         _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
@@ -362,11 +357,13 @@ void satTrackLCD()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
-
-    time_t t = now();
     char       buffer[256];
+    
+    time_t t = now();
+    unsigned long int milliseconds = nowMillis();
+    int tenths = round((double)milliseconds / 100.0)*1000; 
+    
     lcd.setCursor(0,0);
-
     lcd.print(_stateLabels[_state]);
 
     if (_state == SERL) {                     // DEBUG SERIAL INPUT 
@@ -374,8 +371,10 @@ void satTrackLCD()
       lcd.print(_serialInput);
       lcd.print("|");
     } else {                                
-      lcd.print("    ");
-      sprintf(buffer,"%02d:%02d:%02d",hour(t),minute(t),second(t));
+      lcd.print("  ");
+      time_t t = now();
+ 
+      sprintf(buffer,"%02d:%02d:%02d.%1d",hour(t),minute(t),second(t),tenths);
       lcd.print(buffer);
     }
 
@@ -438,14 +437,15 @@ AccelStepper elevationMotor(forwardstep_motor1, backwardstep_motor1);
 
 void switchCmd()
 {
-      if ((_limit_switch & LIMIT_SWITCH_EL_MAX) == LIMIT_SWITCH_EL_MAX)
+      if ((_limitSwitch & LIMIT_SWITCH_EL_MAX) == LIMIT_SWITCH_EL_MAX)
           {
-          elevationMotor.stop();
+          elevationMotor.stop();        // all engines stop 
           azimuthMotor.stop();
           // Keep the L293D from frying while we debug, antenna position may drift
           motor2.release();
           motor1.release();
-          
+
+          // elevation is homed at maximum (level to horizon is zero)
           elevationMotor.setCurrentPosition(ELEVATION_MOTOR_MAX_STEPS);
           azimuthMotor.setCurrentPosition(0);
 
@@ -474,12 +474,9 @@ void updateSat()
 #endif
 
     time_t t = now();
-    // use running tally of milliseconds to smooth satellite motion (doesn't increase actual time precision)
-
-    Serial.println(second(t));
-    Serial.println(millis());
-    
-    seconds = (double)second(t) + min(((double)_milliseconds / 1000.0),(double)(999.0/1000.00)); 
+    unsigned long int milliseconds = nowMillis();
+   // millseconds = round((double)milliseconds / 100.0)*100.0; 
+    seconds = (double)second(t) + ((double)(milliseconds)/1000.0); 
    
     // modified PLAN13 library, use floating point seconds to smooth antenna motion 
     p13.setPrecisionTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),seconds);
@@ -504,6 +501,8 @@ void targetAzElToCmd()
     Serial.println(__func__);
 #endif
   _commandElevation = min(max(_targetElevation,5.0),ELEVATION_GIMBAL_MAX_ELEVATION);
+
+// need a more sophisticated cable wrap protection logic +/- 200 degrees or more would be fine
 
   if (_targetAzimuth > 180.0) {
     _commandAzimuth = - (360.0 - _targetAzimuth);
@@ -987,7 +986,7 @@ void initAE35()
     _stateTransitionFlag = 0;
     _flagHomePositionSet = 0;
 
-    pinMode(31,INPUT_PULLUP);
+    pinMode(31,INPUT_PULLUP);         // elevation MAX limit switch breadboarded into digital 31
     setTime(23,30,00,11,10,15);
     Serial.begin(9600);
     Serial.print(F("Hello World!"));
@@ -1275,7 +1274,6 @@ void loop ()
 
     _ms = millis();
     elapsed = _ms - _lastms;
-    // _tempMaxElapsed = (elapsed + _tempMaxElapsed)/2;    tests indicate execute loops every 1-2ms 
  
     _fastTimer += elapsed;
     _mediumTimer += elapsed;
@@ -1297,19 +1295,11 @@ void loop ()
         for (i=0; i<5; i++) (*slow[i][_state])();
         _slowTimer = 0;
     }
-  
-   
-   // running tally of elapsed milliseconds, used to smooth satellite position computations 
-   _milliseconds += elapsed; 
-   if (_seconds != second(t)) {
-      _milliseconds = 0;
-      _seconds = second(t);
-   }
     
     // NO CHECK FOR 1202 error
     // delay (max((long)(20 - (millis() - _ms)),0));  // original exec would sleep off the unused time every 20ms  
-    azimuthMotor.run();                            // now always try to advance the stepper motors if the executive is spinning 
-    elevationMotor.run();        
+    azimuthMotor.run();                               // now always try to advance the stepper motors if the executive is spinning 
+    elevationMotor.run();                             // timing tests indicated 12/1/2015 version loops every 1-2ms
 }
 
 void debugP13keps()
