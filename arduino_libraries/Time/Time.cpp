@@ -269,6 +269,12 @@ time_t now() {
   return (time_t)sysTime;
 }
 
+// if called immediately after now() returns addtl millisec
+
+unsigned long nowMillis() {
+  return ((unsigned long)millis() - (unsigned long)prevMillis);
+}
+
 void setTime(time_t t) { 
 #ifdef TIME_DRIFT_INFO
  if(sysUnsyncedTime == 0) 
