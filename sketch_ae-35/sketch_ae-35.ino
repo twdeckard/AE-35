@@ -1,12 +1,24 @@
+
 // requires fork of AFMotor to remap shift reg pins to slot 4 for DFRobot mega multi expansion shield
 #include <AFMotor.h>
 // requires fork of Time for sub second resolution
 #include <Time.h>
 #include <AccelStepper.h>
 #include <LiquidCrystal.h>
-// requires fork of PLAN13 for fractional seconds input for smooth'er motion
+#include <Wire.h>
+// requires fork of PLAN13 for fractional seconds input for smooth'er motion, a bit of a clumsy hack
 #include <Plan13.h>
+// I2Cdev and MPU9150 must be installed as libraries, or else the .cpp/.h files
+// for both classes must be in the include path of your project
+#include "I2Cdev.h"
+#include "MPU9150.h"
+#include "helper_3dmath.h"
 
+// class default I2C address is 0x68
+// specific I2C addresses may be passed as a parameter here
+// AD0 low = 0x68 (default for InvenSense evaluation board)
+// AD0 high = 0x69
+MPU9150 accelGyroMag;
 
 /***********************************************************************************************************
  *
@@ -17,6 +29,7 @@
  * Arduino Mega 2560 R3
  * SainSmart L293D Motor Drive
  * SainSmart LCD 1602 + Keypad
+ * MPU-9150 accelerometer/gyro/compass
  *
  * Compute the location of one of a selection of orbiting satellites from an internal database
  * and steer an altitude/azimuth gimbal to maintain a track while object is above the horizon.
@@ -25,9 +38,12 @@
  * and steers the antenna gimbal to north/horizon using manual inputs. 
  * 
  * Copyright 2015 Todd Deckard, All rights reserved. 
- *
- ********************************************************************************************************/
-
+ * 
+ * 
+ * Some inspiration from accelerometer/gyro/magnetometer code from Kristian Lauszus, TKJ Electronics
+ * *******************************************************************************************************/
+ 
+ 
 #define NEVER                                     0
 #define ALWAYS                                    1
 
@@ -60,7 +76,9 @@
 
 void  satTrackLCD(), pollGPS(), currentMotorPos(), updateSat(), trackCommand(), currentMotorPos(), 
       satTrackButtons(),  processSerial1(), stepsAzElToMotors(),  targetAzElToCmd(), cmdAzElToSteps(), 
-      stepsAzElToMotors(), checkSerial1(), readBtn(), readSwtch();
+      stepsAzElToMotors(), checkSerial1(), readBtn(), readSwtch(), MPU9150_setupCompass();
+
+int   MPU9150_readSensor(int addrL, int addrH),MPU9150_writeSensor(int addr,int data);
 
 // typedefs with arrays make the compiler sad
 
@@ -77,6 +95,97 @@ unsigned long int            _lastms = 0;
 unsigned long int            _fastTimer;
 unsigned long int            _mediumTimer;
 unsigned long int            _slowTimer;
+
+// future, single object for Az and El to provide bounds checks and coordinate transformations between antenna and frame
+typedef struct { 
+  double theta;
+  double x;
+  double y;
+  double z; 
+} axisAngle; 
+
+typedef struct {
+  double rho; 
+  double theta;
+} coord; 
+
+class gimbal 
+{
+    private:
+        double    Az; 
+        double    El;
+        double    AzMotorStepsPerDegree; 
+        double    ElMotorStepsPerDegree; 
+        long int  AzMotorUpperLimitSteps;
+        long int  AzMotorLowerLimitSteps; 
+        long int  ElMotorUpperLimitSteps;
+        long int  ElMotorLowerLimitSteps; 
+        double    AzAntLowerLimitDeg; 
+        double    AzAntUpperLimitDeg; 
+        double    ElAntLowerLimitDeg; 
+        double    ElAntUpperLimitDeg; 
+        axisAngle IMU;
+        axisAngle plumb; 
+
+    public:
+        long int boundAntAzSteps(long int steps) {
+          steps = min(steps,AzMotorUpperLimitSteps);
+          steps = max(steps,AzMotorLowerLimitSteps);
+          return steps; 
+        }
+        long int gimbalAzDegToSteps(double degrees) {
+          long int steps = degrees * AzMotorStepsPerDegree; 
+          return steps;
+        }
+        long int boundAntElSteps(long int steps) {
+          steps = min(steps,ElMotorUpperLimitSteps);
+          steps = max(steps,ElMotorLowerLimitSteps);
+          return steps; 
+        }
+        long int gimbalElDegToSteps(double degrees) {
+          long int steps = degrees * ElMotorStepsPerDegree; 
+          return steps;
+        }
+        double boundAntAzDeg(long int steps) {   // redundant to bound in units of degrees and steps, perhaps cable wrap logic 
+          steps = min(steps,ElAntUpperLimitDeg); // will want to know the distinction?
+          steps = max(steps,ElAntLowerLimitDeg);
+          return steps; 
+        }
+        double boundAntElDeg(long int steps) {
+          steps = min(steps,ElAntUpperLimitDeg);
+          steps = max(steps,ElAntLowerLimitDeg);
+          return steps; 
+        }
+        double   AbsAzToAntAz(double AzDeg) {
+          double rotate = AzDeg + plumb.theta;  // should rotate coordinates thru plumb vector, assume level and mag=true for now
+          return rotate;                        // need to channel Olinde Rodrigues
+        }
+        double   AbsElToAntEl(double ElDeg) {   // should rotate coordinates thru plumb vector, assume level and mag=true for now
+          double rotate = ElDeg;
+          return rotate;
+        }
+        void ae35();
+        // void ~ae35(); // either I don't understand c++ anymore or the arduino doesn't, no delete?
+
+        void set_targetAz(double arg) { Az = boundAntAzDeg(AbsAzToAntAz(arg)); };
+        void set_targetEl(double arg) { El = boundAntElDeg(AbsElToAntEl(arg)); };
+        void set_ReadIMUSensorAxisAngle(double theta, double x, double y, double z) {  
+            IMU.theta = theta;
+            IMU.x = x; 
+            IMU.y = y;
+            IMU.z = z;
+        }
+        void set_SensorToFrameAxisAngle(double theta, double x, double y, double z) {
+            plumb.theta = theta; 
+            plumb.x     = x; 
+            plumb.y     = y;
+            plumb.z     = z; 
+        }
+        int get_AzTargetMotorSteps()  { return (boundAntAzSteps(gimbalAzDegToSteps(AbsAzToAntAz(Az)))); };
+        int get_ElTargetMotorSteps()  { return (boundAntElSteps(gimbalElDegToSteps(AbsElToAntEl(El)))); };
+} ae35; 
+
+// for now, think globally but act locally
 
 double                      _currentAzimuth;
 double                      _currentElevation;
@@ -115,11 +224,22 @@ unsigned short int          _limitSwitch = 0;
 
 unsigned short int          _adc_debug_temporary = 0;
 unsigned short int          _gps_debug_temporary = 0;
+unsigned short int          _accel_debug_temporary = 0;
 
 boolean                     _flagTimeSetManually = 0;
 boolean                     _flagDateSetManually = 0;
 boolean                     _flagSatelliteSet = 0;
 boolean                     _flagHomePositionSet = 0;
+
+/* plumb bob values */ 
+double _accX =0, _accY=0, _accZ=0; 
+double _compX=0, _compY=0,_compZ=0;
+
+
+
+double _roll;
+double _pitch; 
+double _heading;
 
 
 Plan13              p13;
@@ -185,10 +305,10 @@ String _keps[] =
 #define ELEVATION_MOTOR_MIN_STEPS           (0)
 #define ELEVATION_GIMBAL_MAX_ELEVATION      (50)
 
-#define MAX_EL_SPEED_MANUAL                 (60)
+#define MAX_EL_SPEED_MANUAL                 (120)
 #define MAX_EL_SPEED_TRACK                  (60)
 #define MAX_EL_SPEED_HOME                   (30)
-#define MAX_AZ_SPEED_MANUAL                 (60)
+#define MAX_AZ_SPEED_MANUAL                 (120)
 #define MAX_AZ_SPEED_TRACK                  (60)
 #define MAX_AZ_SPEED_HOME                   (30)
 
@@ -223,7 +343,42 @@ LiquidCrystal lcd(28,11,24,25,26,27);
 #define SERIAL_DATA                               1024
 
 
+#if 0
+// Register names according to the datasheet.
+// According to the InvenSense document
+// "MPU-9150 Register Map and Descriptions Revision 4.0",
+#define MPU9150_CONFIG             0x1A   // R/W
+#define MPU9150_GYRO_CONFIG        0x1B   // R/W
+#define MPU9150_ACCEL_CONFIG       0x1C   // R/W  
+#define MPU9150_ACCEL_XOUT_H       0x3B   // R  
+#define MPU9150_ACCEL_XOUT_L       0x3C   // R  
+#define MPU9150_ACCEL_YOUT_H       0x3D   // R  
+#define MPU9150_ACCEL_YOUT_L       0x3E   // R  
+#define MPU9150_ACCEL_ZOUT_H       0x3F   // R  
+#define MPU9150_ACCEL_ZOUT_L       0x40   // R  
+#define MPU9150_TEMP_OUT_H         0x41   // R  
+#define MPU9150_TEMP_OUT_L         0x42   // R  
+#define MPU9150_GYRO_XOUT_H        0x43   // R  
+#define MPU9150_GYRO_XOUT_L        0x44   // R  
+#define MPU9150_GYRO_YOUT_H        0x45   // R  
+#define MPU9150_GYRO_YOUT_L        0x46   // R  
+#define MPU9150_GYRO_ZOUT_H        0x47   // R  
+#define MPU9150_GYRO_ZOUT_L        0x48   // R  
+#define MPU9150_PWR_MGMT_1         0x6B   // R/W
+#define MPU9150_PWR_MGMT_2         0x6C   // R/W
+#define MPU9150_WHO_AM_I           0x75   // R
 
+//MPU9150 Compass
+#define MPU9150_CMPS_XOUT_L        0x4A   // R
+#define MPU9150_CMPS_XOUT_H        0x4B   // R
+#define MPU9150_CMPS_YOUT_L        0x4C   // R
+#define MPU9150_CMPS_YOUT_H        0x4D   // R
+#define MPU9150_CMPS_ZOUT_L        0x4E   // R
+#define MPU9150_CMPS_ZOUT_H        0x4F   // R
+
+// I2C address 0x69 could be 0x68 depends on your wiring. 
+int MPU9150_I2C_ADDRESS = 0x68;
+#endif 
 
 void readBtn()
 {
@@ -263,9 +418,36 @@ void pollGPS()                            // GPS shield is not integrated
     Serial.println(__func__);
 #endif
 
+  double alpha = 0.8;
+  int16_t ax, ay, az;
+  int16_t gx, gy, gz;
+  int16_t mx, my, mz;
+  
+#if 0
+  _compX = MPU9150_readSensor(MPU9150_CMPS_XOUT_L,MPU9150_CMPS_XOUT_H);
+  _compY = MPU9150_readSensor(MPU9150_CMPS_YOUT_L,MPU9150_CMPS_YOUT_H);
+  _compZ = MPU9150_readSensor(MPU9150_CMPS_ZOUT_L,MPU9150_CMPS_ZOUT_H);
+  _accX  = MPU9150_readSensor(MPU9150_ACCEL_XOUT_L,MPU9150_ACCEL_XOUT_H)*alpha + ((_accX)*(1.0-alpha));
+  _accY  = MPU9150_readSensor(MPU9150_ACCEL_YOUT_L,MPU9150_ACCEL_YOUT_H)*alpha + ((_accY)*(1.0-alpha));
+  _accZ  = MPU9150_readSensor(MPU9150_ACCEL_ZOUT_L,MPU9150_ACCEL_ZOUT_H)*alpha + ((_accZ)*(1.0-alpha));
+#endif 
+
+
+  accelGyroMag.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+  _compX = mx*10.*1229./4096.;   // Conversion from 1229 microTesla full scale (4096) to 12.29 Gauss full scale
+  _compY = my*10.*1229./4096.;   // note: really need to calibrate for large ferrous soft steel bench ginder stand
+  _compZ = mz*10.*1229./4096.;   // values are gibberish now, but hey at least they are in uTesla. 
+  _accX  = ax*alpha + ((_accX)*(1.0-alpha));
+  _accY  = ay*alpha + ((_accY)*(1.0-alpha));
+  _accZ  = az*alpha + ((_accZ)*(1.0-alpha));
+  
+  _roll  = atan2(_accY, _accZ) * RAD_TO_DEG;
+  _pitch = atan(-_accX / sqrt(_accY * _accY + _accZ * _accZ)) * RAD_TO_DEG;
+  _heading = atan2(_compY,_compX) * RAD_TO_DEG; // note we compute the tilt and then disregard it for heading!
+ 
     time_t t = now();
-    _gps_debug_temporary += 1;
-    if (_gps_debug_temporary > 30)
+    _gps_debug_temporary += 1;            // 150 laps to simulate time to acquire time base and lat/lon 
+    if (_gps_debug_temporary > 150)       // but we'll use the repetition to average the IMU readings
     {
         _latitude  =  44.884860;          // grid square EN34FV 
         _longitude = -93.551492;
@@ -273,7 +455,6 @@ void pollGPS()                            // GPS shield is not integrated
         // p13.setLocation(-64.375, 45.8958,0.0); // Sackville, NB
         p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
         _stateTransitionFlag |= GPS_LOCK;
-        lcd.clear();
     }
 }
 
@@ -306,7 +487,7 @@ void satTrackButtons()
             _targetAzimuth = round(_targetAzimuth - 1.0);
             break;
         };
-        _targetElevation = max(_targetElevation,0.0);
+        _targetElevation = max(_targetElevation,0.0);     // this will be object oriented before we are all done
         _targetElevation = min(_targetElevation,50.0);
         _targetAzimuth   = max(_targetAzimuth,-90.0);
         _targetAzimuth  =  min(_targetAzimuth,450.0);
@@ -350,54 +531,123 @@ void satTrackButtons()
 INIT->CNFG->DRIV->HOME->TRAC->STOP
                         STOP->TRAC
 ****/
+void displayMagnetometer() {
+
+   char buffer[256];
+   lcd.setCursor(0,0);
+   lcd.print("MAGNETOM");
+   sprintf(buffer,"X:%3dY:%3dZ:%3d",_compX,_compY,_compZ);
+   lcd.setCursor(0,1);
+   lcd.print(buffer);
+}
+
+
+void displayAccelerometer() {
+
+   char buffer[256];
+   // lcd.setCursor(0,0);
+   // lcd.print("ACCELEROM");
+   sprintf(buffer,"X:%3dY:%3dZ:%3d",(int)_accX,(int)_accY,(int)_accZ);
+   lcd.setCursor(0,1);
+   lcd.print(buffer);
+}
+void displayHdgRollPitch() {
+   char buffer[256];
+   lcd.setCursor(0,0);
+   lcd.print("MAG HEADING:");
+   sprintf(buffer,"%3d",_heading);
+   lcd.print(_heading); 
+   lcd.setCursor(0,1);
+   lcd.print("ROLL");
+   sprintf(buffer,"%+02d",(int)_roll);
+   lcd.print(buffer);
+   lcd.print("PITCH");
+   sprintf(buffer,"%+02d",(int)_pitch);
+   lcd.print(buffer);
+}
+
+void displayTimeHHMMSST() {
+
+   char buffer[256];
+
+   time_t t = now();
+   unsigned long int milliseconds = nowMillis();
+
+   int tenths = round((double)milliseconds / 100.0)*1000;  
+   lcd.setCursor(6,0);
+   sprintf(buffer,"%02d:%02d:%02d.%1d",hour(t),minute(t),second(t),tenths);
+   lcd.print(buffer);
+}
+void displayState() {
+   lcd.setCursor(0,0);
+   lcd.print(_stateLabels[_state]);
+}
+
+void displaySatellite() {
+
+   lcd.setCursor(0,1);
+   lcd.print(_target);
+}
+
+void displayTargetAzElDeg() {
+
+   lcd.setCursor(4,1);
+   lcd.print("A     E     ");
+   lcd.setCursor(5,1);
+   lcd.print(_targetAzimuth,1);
+   lcd.setCursor(11,1);
+   lcd.print(_targetElevation,1);
+}
+
+void displayTargetAzElSteps() {
+
+   char buffer[256];
+
+   sprintf(buffer,"A%05dE%05d",(int)_commandAzSteps,(int)_commandElSteps);
+   lcd.setCursor(4,1);
+   lcd.print(buffer);
+}
+
+
 
 void satTrackLCD()
 {
-
-#ifdef FUNCTIONTRACETOSERIAL
-    Serial.println(__func__);
+switch(_state) {
+    case INIT:
+    case CNFG:
+        lcd.clear();
+        displayState();
+        displayTimeHHMMSST();
+        break;
+   case GPSL:
+#if 0
+        lcd.clear();
+        displayState();
+        displayTimeHHMMSST();
+        displayAccelerometer();
 #endif
-    char       buffer[256];
-    
-    time_t t = now();
-    unsigned long int milliseconds = nowMillis();
-    int tenths = round((double)milliseconds / 100.0)*1000; 
-    
-    lcd.setCursor(0,0);
-    lcd.print(_stateLabels[_state]);
+        displayHdgRollPitch();
+        break;
+   case DRIV:
+   case TRAC:
+   case HOME:
+   case STOP:
 
-    if (_state == SERL) {                     // DEBUG SERIAL INPUT 
-      lcd.print("|");
-      lcd.print(_serialInput);
-      lcd.print("|");
-    } else {                                
-      lcd.print("  ");
-      time_t t = now();
- 
-      sprintf(buffer,"%02d:%02d:%02d.%1d",hour(t),minute(t),second(t),tenths);
-      lcd.print(buffer);
-    }
+        lcd.clear();
+        displayState();
+        displayTimeHHMMSST();
+        displaySatellite();
+        if (_flagHomePositionSet) displayTargetAzElDeg(); else displayTargetAzElSteps();
+        break;
 
-    lcd.setCursor(0,1);
-    lcd.print(_target.substring(0,4));
-
-    if (!_flagHomePositionSet)
-    {
-        sprintf(buffer," A%05dE%05d",(int)_commandAzSteps,(int)_commandElSteps);
-        lcd.print(buffer);
-    }
-    else
-    {
+    case SERL:
+        lcd.clear();
+        displayState();
         lcd.setCursor(4,1);
-        lcd.print("A     E     ");
-        lcd.setCursor(5,1);
-        lcd.print(_targetAzimuth,1);
-        lcd.setCursor(11,1);
-        lcd.print(_targetElevation,1);
+        lcd.print("          ");
+        displayTargetAzElDeg();
     };
-
 }
-
 
 /********************************************************************************************************
  *
@@ -460,7 +710,7 @@ void movAzElMotors()
     Serial.println(__func__);
 #endif
 
-// executive runs every 20ms, 500 times a second maximum
+// executive used to run every 20ms, 500 times a second maximum, now it spins freely 
 //
     azimuthMotor.run();
     elevationMotor.run();
@@ -643,11 +893,19 @@ void (*medium[5][NUMBEROFSTATES])()
       };
 
 void (*fast[5][NUMBEROFSTATES])()
-    = {  readSwtch,    readSwtch,     readSwtch,    readSwtch,     readSwtch,     readSwtch,   readSwtch,     noop,
-         readBtn,       readBtn,       readBtn,      readBtn,       readBtn,      switchCmd,   movAzElMotors,  noop,
-         noop,           noop,           noop,     movAzElMotors, movAzElMotors,   readBtn,       noop,       noop,
-         noop,           noop,           noop,         noop,          noop,      movAzElMotors,   noop,       noop,
-         noop,           noop,           noop,         noop,          noop,         noop,         noop,       noop
+    = {  readBtn,       readBtn,        readBtn,     readBtn,       readBtn,      readBtn,       readBtn,    noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
+      };
+
+void (*always[5][NUMBEROFSTATES])()
+    = {  noop,           noop,           noop,     movAzElMotors, movAzElMotors,  readSwtch,    movAzElMotors, noop,
+         noop,           noop,           noop,         noop,          noop,       switchCmd,      noop,        noop,
+         noop,           noop,           noop,         noop,          noop,      movAzElMotors,   noop,        noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,        noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,        noop
       };
 
 
@@ -997,9 +1255,29 @@ void initAE35()
     lcd.setCursor(0,1);
     lcd.print(__DATE__);
     _serialInput = "";
+    delay(3000);
     azimuthMotor.setCurrentPosition(0);
     elevationMotor.setCurrentPosition(0);
-    delay(3000);
+
+  Wire.begin();
+  accelGyroMag.initialize();
+#if 0   
+   // Initialize the 'Wire' class for the I2C-bus.
+   Wire.begin();
+
+   //
+   // Initialize plumb bob sensor and compass
+   //
+   // Clear the 'sleep' bit to start the sensor.
+   MPU9150_writeSensor(MPU9150_PWR_MGMT_1, 0);
+   MPU9150_setupCompass();
+   _compX = MPU9150_readSensor(MPU9150_CMPS_XOUT_L,MPU9150_CMPS_XOUT_H);  // magnetometer is returning all zeros
+   _compY = MPU9150_readSensor(MPU9150_CMPS_YOUT_L,MPU9150_CMPS_YOUT_H);
+   _compZ = MPU9150_readSensor(MPU9150_CMPS_ZOUT_L,MPU9150_CMPS_ZOUT_H);
+   _accX  = MPU9150_readSensor(MPU9150_ACCEL_XOUT_L,MPU9150_ACCEL_XOUT_H);
+   _accY  = MPU9150_readSensor(MPU9150_ACCEL_YOUT_L,MPU9150_ACCEL_YOUT_H);
+   _accZ  = MPU9150_readSensor(MPU9150_ACCEL_ZOUT_L,MPU9150_ACCEL_ZOUT_H);
+#endif 
 
 // temporarily allow user to input an approximate time
 
@@ -1056,61 +1334,61 @@ void configAE35()
     lcd.print(F("epochYear"));
     lcd.setCursor(0,1);
     lcd.print(epochYear);
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("epochTime"));
     lcd.setCursor(0,1);
     lcd.print(epochTime);
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("decayRate * 10^6"));
     lcd.setCursor(0,1);
     lcd.print((decayRate * 1000000.0));
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("inclination"));
     lcd.setCursor(0,1);
     lcd.print(inclination);
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("rightAscension"));
     lcd.setCursor(0,1);
     lcd.print(rightAscension); 
-    delay(300); 
+    delay(200); 
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("eccentr. * 10^6"));
     lcd.setCursor(0,1);
     lcd.print((eccentricity * 1000000.0)); 
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("argOfPerigee"));
     lcd.setCursor(0,1);
     lcd.print(argOfPerigee); 
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("meanAnomoly"));
     lcd.setCursor(0,1);
     lcd.print(meanAnomoly); 
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("meanMotion"));
     lcd.setCursor(0,1);
     lcd.print(meanMotion); 
-    delay(300);
+    delay(200);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print(F("revolutionNumber"));
     lcd.setCursor(0,1);
     lcd.print(revolutionNumber); 
-    delay(300);
+    delay(200);
     
 
     time_t t = now();
@@ -1242,14 +1520,9 @@ void updateState()
 }
 
 
-
+void bail() { }; // could put a unique function in last slot of each table so executive loop bails out, eliminates frivilous noops
 
 void noop() { };
-void readSerial() { };
-void readAbsolutePosition() {};
-void updateTime() {};
-
-
 
 void setup()
 {
@@ -1280,6 +1553,8 @@ void loop ()
     _slowTimer += elapsed;
     _lastms = _ms;
 
+    for (i=0; i<5; i++) (*always[i][_state])();
+    
     if (_fastTimer >= 10)
     {
         for (i=0; i<5; i++) (*fast[i][_state])();
@@ -1298,9 +1573,90 @@ void loop ()
     
     // NO CHECK FOR 1202 error
     // delay (max((long)(20 - (millis() - _ms)),0));  // original exec would sleep off the unused time every 20ms  
-    azimuthMotor.run();                               // now always try to advance the stepper motors if the executive is spinning 
-    elevationMotor.run();                             // timing tests indicated 12/1/2015 version loops every 1-2ms
+                                                      // now always try to advance the stepper motors if the executive is spinning 
+                                                      // timing tests indicated 12/1/2015 version loops every 1-2ms
 }
+
+#if 0 
+// this never worked for magnetometer
+
+void MPU9150_setupCompass(){
+  MPU9150_I2C_ADDRESS = 0x0C;      //change Address to Compass 0x0D
+
+  // sleep mode & clock
+  MPU9150_writeSensor(0x6b, 0x01);
+  
+  MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
+  MPU9150_writeSensor(0x0A, 0x0F); //SelfTest
+  MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
+
+// passthrough mode
+  MPU9150_writeSensor(0x37, 0x02);
+// I2C master disable
+  MPU9150_writeSensor(0x6a, 0x00);
+
+    
+  MPU9150_I2C_ADDRESS = 0x68;      //change Address to MPU
+
+  MPU9150_writeSensor(0x24, 0x40); //Wait for Data at Slave0
+  MPU9150_writeSensor(0x25, 0x8C); //Set i2c address at slave0 at 0x0C
+  MPU9150_writeSensor(0x26, 0x02); //Set where reading at slave 0 starts
+  MPU9150_writeSensor(0x27, 0x88); //set offset at start reading and enable
+  MPU9150_writeSensor(0x28, 0x0C); //set i2c address at slv1 at 0x0C
+  MPU9150_writeSensor(0x29, 0x0A); //Set where reading at slave 1 starts
+  MPU9150_writeSensor(0x2A, 0x81); //Enable at set length to 1
+  MPU9150_writeSensor(0x64, 0x01); //overvride register
+  MPU9150_writeSensor(0x67, 0x03); //set delay rate
+  MPU9150_writeSensor(0x01, 0x80);
+
+  MPU9150_writeSensor(0x34, 0x04); //set i2c slv4 delay
+  MPU9150_writeSensor(0x64, 0x00); //override register
+  MPU9150_writeSensor(0x6A, 0x00); //clear usr setting
+  MPU9150_writeSensor(0x64, 0x01); //override register
+  MPU9150_writeSensor(0x6A, 0x20); //enable master i2c mode
+  MPU9150_writeSensor(0x34, 0x13); //disable slv4
+}
+
+////////////////////////////////////////////////////////////
+///////// I2C functions to get easier all values ///////////
+////////////////////////////////////////////////////////////
+
+int MPU9150_readSensor(int addrL, int addrH){
+  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
+  Wire.write(addrL);
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(MPU9150_I2C_ADDRESS, 1, true);
+  byte L = Wire.read();
+
+  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
+  Wire.write(addrH);
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(MPU9150_I2C_ADDRESS, 1, true);
+  byte H = Wire.read();
+
+  return (int16_t)((H<<8)+L);
+}
+
+int MPU9150_readSensor(int addr){
+  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
+  Wire.write(addr);
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(MPU9150_I2C_ADDRESS, 1, true);
+  return Wire.read();
+}
+
+int MPU9150_writeSensor(int addr,int data){
+  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
+  Wire.write(addr);
+  Wire.write(data);
+  Wire.endTransmission(true);
+
+  return 1;
+}
+#endif 
 
 void debugP13keps()
 {
