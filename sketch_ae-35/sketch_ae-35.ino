@@ -156,10 +156,13 @@ class gimbal
           double deg = (double)steps / ElMotorStepsPerDegree;
           return deg; 
         }
-        double boundAntAzDeg(double deg) {   // redundant to bound in units of degrees and steps, perhaps cable wrap logic 
+        double boundAntAzDeg(double deg) {   
           if (!homePositionSet) return deg; 
-          deg = min(deg,AzAntUpperLimitDeg); // will want to know the distinction?
-          deg = max(deg,AzAntLowerLimitDeg);
+          // deg = (deg + 360) % 360;          // should really check for >360
+          if      (deg > AzAntUpperLimitDeg)   deg = deg - 360.;      // simple cable wrap logic
+          else if (deg < AzAntLowerLimitDeg)   deg = deg + 360.;
+          // deg = min(deg,AzAntUpperLimitDeg);
+          // deg = max(deg,AzAntLowerLimitDeg);
           return deg; 
         }
         double boundAntElDeg(double deg) {
@@ -181,13 +184,13 @@ class gimbal
 
         void set_targetAz(double arg) { Az = boundAntAzDeg(AbsAzToAntAz(arg)); Serial.println("set_targetAz"); Serial.println(Az);};
         void set_targetEl(double arg) { El = boundAntElDeg(AbsElToAntEl(arg)); Serial.println("set_targetEl"); Serial.println(El);};
-        void set_ReadIMUSensorAxisAngle(double theta, double x, double y, double z) {  
+        void set_IMUSensorToEarth(double theta, double x, double y, double z) {   // relationship of sensor to earth
             IMU.theta = theta;
             IMU.x = x; 
             IMU.y = y;
             IMU.z = z;
         }
-        void set_SensorToFrameAxisAngle(double theta, double x, double y, double z) {
+        void set_SensorToFrame(double theta, double x, double y, double z) {      // relationship of sensor to frame datum
             plumb.theta = theta; 
             plumb.x     = x; 
             plumb.y     = y;
@@ -205,7 +208,7 @@ class gimbal
         void set_ElMotorLowerLimitSteps(long int steps) {
                 ElMotorLowerLimitSteps = steps; 
         }
-        void set_AzAntLowerLimitDeg(double deg) {
+        void set_AzAntLowerLimitDeg(double deg) {         // could also test for "reasonable" limits here
                 AzAntLowerLimitDeg = deg; 
         }
         void set_AzAntUpperLimitDeg(double deg) {
@@ -472,8 +475,8 @@ void pollGPS()                            // GPS shield is not integrated
   _pitch = atan(-_accX / sqrt(_accY * _accY + _accZ * _accZ)) * RAD_TO_DEG;
   _heading = atan2(_compY,_compX) * RAD_TO_DEG; // note we compute the tilt and then disregard it for heading!
    
-  AE35.set_ReadIMUSensorAxisAngle(0. /* -_heading*/ , 0., 0., -1.);      // the compass is reading gibberish
-  AE35.set_SensorToFrameAxisAngle(0., 1.,1.,1.);                 // the MPU9150 is tilted -17 degrees from vertical
+  AE35.set_IMUSensorToEarth(0. /* -_heading*/ , 0., 0., -1.);      // the compass is reading gibberish
+  AE35.set_SensorToFrame(0., 1.,1.,1.);                 // the MPU9150 is tilted -17 degrees from vertical
   
     time_t t = now();
     _gps_debug_temporary += 1;            // 150 laps to simulate time to acquire time base and lat/lon 
@@ -1273,8 +1276,8 @@ void initAE35()
 
   AE35.set_ElAntUpperLimitDeg(50.);                     
   AE35.set_ElAntLowerLimitDeg(5.);
-  AE35.set_AzAntUpperLimitDeg(+270.);  
-  AE35.set_AzAntLowerLimitDeg(-270.); 
+  AE35.set_AzAntUpperLimitDeg(+190.);  
+  AE35.set_AzAntLowerLimitDeg(-190.); 
   AE35.set_AzMotorUpperLimitSteps(AZIMUTH_MOTOR_MAX_STEPS);
   AE35.set_AzMotorLowerLimitSteps(AZIMUTH_MOTOR_MIN_STEPS);
   AE35.set_ElMotorUpperLimitSteps(ELEVATION_MOTOR_MAX_STEPS);
