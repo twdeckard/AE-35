@@ -40,7 +40,6 @@ MPU9150 accelGyroMag;
  * Copyright 2015 Todd Deckard, All rights reserved. 
  * 
  * 
- * Some inspiration from accelerometer/gyro/magnetometer code from Kristian Lauszus, TKJ Electronics
  * *******************************************************************************************************/
  
  
@@ -74,9 +73,9 @@ MPU9150 accelGyroMag;
 
 // forward declarations make the compiler happy
 
-void  satTrackLCD(), pollGPS(), currentMotorPos(), updateSat(), trackCommand(), currentMotorPos(), 
-      satTrackButtons(),  processSerial1(), stepsAzElToMotors(),  targetAzElToCmd(), cmdAzElToSteps(), 
-      stepsAzElToMotors(), checkSerial1(), readBtn(), readSwtch(), MPU9150_setupCompass();
+void  satTrackLCD(), pollGPS(), currentMotorPos(), updateSat(), currentMotorPos(), 
+      satTrackButtons(),  processSerial1(), stepsAzElToMotors(), cmdAzElToSteps(), 
+      checkSerial1(), readBtn(), readSwtch(), MPU9150_setupCompass();
 
 int   MPU9150_readSensor(int addrL, int addrH),MPU9150_writeSensor(int addr,int data);
 
@@ -114,6 +113,7 @@ class gimbal
     private:
         double    Az; 
         double    El;
+        boolean   homePositionSet = false;
         double    AzMotorStepsPerDegree; 
         double    ElMotorStepsPerDegree; 
         long int  AzMotorUpperLimitSteps;
@@ -129,32 +129,44 @@ class gimbal
 
     public:
         long int boundAntAzSteps(long int steps) {
+          if (!homePositionSet) return steps; 
           steps = min(steps,AzMotorUpperLimitSteps);
           steps = max(steps,AzMotorLowerLimitSteps);
           return steps; 
         }
-        long int gimbalAzDegToSteps(double degrees) {
-          long int steps = degrees * AzMotorStepsPerDegree; 
-          return steps;
-        }
         long int boundAntElSteps(long int steps) {
+          if (!homePositionSet) return steps; 
           steps = min(steps,ElMotorUpperLimitSteps);
           steps = max(steps,ElMotorLowerLimitSteps);
           return steps; 
         }
-        long int gimbalElDegToSteps(double degrees) {
-          long int steps = degrees * ElMotorStepsPerDegree; 
+        long int gimbalAzDegToSteps(double deg) {
+          long int steps = (int)round(deg * AzMotorStepsPerDegree); 
           return steps;
         }
-        double boundAntAzDeg(long int steps) {   // redundant to bound in units of degrees and steps, perhaps cable wrap logic 
-          steps = min(steps,ElAntUpperLimitDeg); // will want to know the distinction?
-          steps = max(steps,ElAntLowerLimitDeg);
-          return steps; 
+        long int gimbalElDegToSteps(double deg) { 
+          long int steps = (int)round(deg * ElMotorStepsPerDegree); 
+          return steps;
         }
-        double boundAntElDeg(long int steps) {
-          steps = min(steps,ElAntUpperLimitDeg);
-          steps = max(steps,ElAntLowerLimitDeg);
-          return steps; 
+        double gimbalAzStepsToDeg(long int steps) {
+          double deg = (double)steps / AzMotorStepsPerDegree;
+          return deg; 
+        }
+        double gimbalElStepsToDeg(long int steps) {
+          double deg = (double)steps / ElMotorStepsPerDegree;
+          return deg; 
+        }
+        double boundAntAzDeg(double deg) {   // redundant to bound in units of degrees and steps, perhaps cable wrap logic 
+          if (!homePositionSet) return deg; 
+          deg = min(deg,AzAntUpperLimitDeg); // will want to know the distinction?
+          deg = max(deg,AzAntLowerLimitDeg);
+          return deg; 
+        }
+        double boundAntElDeg(double deg) {
+          if (!homePositionSet) return deg; 
+          deg = min(deg,ElAntUpperLimitDeg);
+          deg = max(deg,ElAntLowerLimitDeg);
+          return deg; 
         }
         double   AbsAzToAntAz(double AzDeg) {
           double rotate = AzDeg + plumb.theta;  // should rotate coordinates thru plumb vector, assume level and mag=true for now
@@ -167,8 +179,8 @@ class gimbal
         void ae35();
         // void ~ae35(); // either I don't understand c++ anymore or the arduino doesn't, no delete?
 
-        void set_targetAz(double arg) { Az = boundAntAzDeg(AbsAzToAntAz(arg)); };
-        void set_targetEl(double arg) { El = boundAntElDeg(AbsElToAntEl(arg)); };
+        void set_targetAz(double arg) { Az = boundAntAzDeg(AbsAzToAntAz(arg)); Serial.println("set_targetAz"); Serial.println(Az);};
+        void set_targetEl(double arg) { El = boundAntElDeg(AbsElToAntEl(arg)); Serial.println("set_targetEl"); Serial.println(El);};
         void set_ReadIMUSensorAxisAngle(double theta, double x, double y, double z) {  
             IMU.theta = theta;
             IMU.x = x; 
@@ -181,26 +193,93 @@ class gimbal
             plumb.y     = y;
             plumb.z     = z; 
         }
+        void set_AzMotorUpperLimitSteps(long int steps) {
+                AzMotorUpperLimitSteps = steps; 
+        }                
+        void set_AzMotorLowerLimitSteps(long int steps) {
+                AzMotorLowerLimitSteps = steps; 
+        }
+        void set_ElMotorUpperLimitSteps(long int steps) {
+                ElMotorUpperLimitSteps = steps; 
+        }
+        void set_ElMotorLowerLimitSteps(long int steps) {
+                ElMotorLowerLimitSteps = steps; 
+        }
+        void set_AzAntLowerLimitDeg(double deg) {
+                AzAntLowerLimitDeg = deg; 
+        }
+        void set_AzAntUpperLimitDeg(double deg) {
+                AzAntUpperLimitDeg = deg;  
+        }
+        void set_ElAntLowerLimitDeg(double deg) {
+                ElAntLowerLimitDeg = deg; 
+        }
+        void set_ElAntUpperLimitDeg(double deg) {
+                ElAntUpperLimitDeg = deg;  
+        }
+        void set_ElAntStepsPerDegree(double steps) {
+                ElMotorStepsPerDegree = steps;
+        }
+        void set_AzAntStepsPerDegree(double steps) {
+                AzMotorStepsPerDegree = steps; 
+        }
+        void AddStepsToElevation(long int steps) {
+          // Serial.print("[AddStepsToElevation]"); Serial.print("<input>steps="); Serial.println(steps); 
+          El = El + gimbalElStepsToDeg(steps); 
+          if (homePositionSet) El = boundAntElDeg(El); 
+        }
+        void AddDegreesToElevation(double deg) {
+          // Serial.print("[AddDegreesToElevation]"); Serial.print("<input>deg="); Serial.println(deg);
+          El = El + deg;
+          if (homePositionSet) El = boundAntElDeg(El);
+        }
+        void AddStepsToAzimuth(long int steps) {
+          // Az = boundAntAzDeg(Az + gimbalAzStepsToDeg(steps));
+          Az = Az + gimbalAzStepsToDeg(steps); 
+          if (homePositionSet) Az = boundAntAzDeg(Az); 
+        }
+        void AddDegreesToAzimuth(double deg) {
+          Az = Az + deg;
+          if (homePositionSet) Az = boundAntAzDeg(Az); 
+        }
+        void setHome() { homePositionSet = true; };
+        void clearHome() { homePositionSet = false; };
         int get_AzTargetMotorSteps()  { return (boundAntAzSteps(gimbalAzDegToSteps(AbsAzToAntAz(Az)))); };
         int get_ElTargetMotorSteps()  { return (boundAntElSteps(gimbalElDegToSteps(AbsElToAntEl(El)))); };
-} ae35; 
+        bool get_TrueIfHomeSet() { return homePositionSet; }
+        double get_AzTarget() { return (Az); };
+        double get_ElTarget() { return (El); };
+      
+
+        void debug() {
+          Serial.print("Az=");
+          Serial.println(Az); 
+          Serial.print("El=");
+          Serial.println(El); 
+          Serial.print("AzMotorStepsPerDegree=");
+          Serial.println(AzMotorStepsPerDegree);
+          Serial.print("ElMotorStepsPerDegree=");
+          Serial.println(ElMotorStepsPerDegree);
+          Serial.print("AzMotorUpperLimitSteps=");
+          Serial.println(AzMotorUpperLimitSteps);
+          Serial.print("AzMotorLowerLimitSteps=");
+          Serial.println(AzMotorLowerLimitSteps);
+          Serial.print("ElMotorUpperLimitSteps=");
+          Serial.println(ElMotorUpperLimitSteps);
+          Serial.print("ElMotorLowerLimitSteps=");
+          Serial.println(ElMotorLowerLimitSteps);
+          Serial.print("AzAntLowerLimitDeg=");
+          Serial.println(AzAntLowerLimitDeg);
+          Serial.print("AzAntUpperLimitDeg=");
+          Serial.println(AzAntUpperLimitDeg);
+          Serial.print("ElAntLowerLimitDeg=");
+          Serial.println(ElAntLowerLimitDeg);
+          Serial.print("ElAntUpperLimitDeg=");
+          Serial.println(ElAntUpperLimitDeg);
+        };
+} AE35; 
 
 // for now, think globally but act locally
-
-double                      _currentAzimuth;
-double                      _currentElevation;
-
-long int                    _currentAzSteps;
-long int                    _currentElSteps;
-
-double                      _targetAzimuth;
-double                      _targetElevation;
-
-double                      _commandAzimuth;
-double                      _commandElevation;
-
-long int                    _commandAzSteps;
-long int                    _commandElSteps;
 
 double                      _latitude;
 double                      _longitude;
@@ -229,7 +308,6 @@ unsigned short int          _accel_debug_temporary = 0;
 boolean                     _flagTimeSetManually = 0;
 boolean                     _flagDateSetManually = 0;
 boolean                     _flagSatelliteSet = 0;
-boolean                     _flagHomePositionSet = 0;
 
 /* plumb bob values */ 
 double _accX =0, _accY=0, _accZ=0; 
@@ -252,15 +330,12 @@ String _keps[] =
 "HUBBLE",
 "1 20580U 90037B   15308.45560487  .00002158  00000-0  12608-3 0  9996",
 "2 20580  28.4708 308.8893 0002648 304.5112 184.0287 15.07840717201004",
-"ISS",
-"1 25544U 98067A   15338.53784929  .00012890  00000-0  19910-3 0  9990",
-"2 25544  51.6437 313.8919 0008374 237.4954 228.2248 15.54451748974549",
+"ISS",          
+"1 25544U 98067A   15355.13133534  .00018357  00000-0  27491-3 0  9992",
+"2 25544  51.6438 231.1133 0008100 305.0563 214.8814 15.54985591977120",
 "MOON2015_11",
 "1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
 "2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
-"FO-29",
-"1 24278U 96046B   15322.84477057  .00000006  00000-0  40894-4 0  9998",
-"2 24278  98.5646 270.8720 0350976  30.0992  21.4518 13.53060378950946",
 "AO-73",
 "1 39444U 13066AE  15322.87353904  .00001603  00000-0  20942-3 0  9992",
 "2 39444 097.7123 019.8359 0059120 352.6005 007.4329 14.80630332105717",
@@ -282,9 +357,6 @@ String _keps[] =
 "AO-51",
 "1 28375U 04025K   15323.38078738  .00000170  00000-0  63277-4 0  9991",
 "2 28375  98.3112 259.4755 0081976 220.4782 260.7991 14.41721314598851",
-"SPROUT",
-"1 39770U 14029E   15323.12177538  .00004189  00000-0  50368-3 0  9997",
-"2 39770  97.8736  57.8959 0010514  58.6984 301.5230 14.84437654 80617",
 "NO-84",
 "1 40654U 15025X   15336.15621742  .00014546  00000-0  35274-3 0 02007",
 "2 40654 054.9965 209.1907 0224949 302.4861 055.4602 15.19293577029654",
@@ -311,7 +383,7 @@ String _keps[] =
 #define MAX_AZ_SPEED_MANUAL                 (120)
 #define MAX_AZ_SPEED_TRACK                  (60)
 #define MAX_AZ_SPEED_HOME                   (30)
-
+   
 void readBtn();
 
 /********************************************************************************************************
@@ -343,42 +415,6 @@ LiquidCrystal lcd(28,11,24,25,26,27);
 #define SERIAL_DATA                               1024
 
 
-#if 0
-// Register names according to the datasheet.
-// According to the InvenSense document
-// "MPU-9150 Register Map and Descriptions Revision 4.0",
-#define MPU9150_CONFIG             0x1A   // R/W
-#define MPU9150_GYRO_CONFIG        0x1B   // R/W
-#define MPU9150_ACCEL_CONFIG       0x1C   // R/W  
-#define MPU9150_ACCEL_XOUT_H       0x3B   // R  
-#define MPU9150_ACCEL_XOUT_L       0x3C   // R  
-#define MPU9150_ACCEL_YOUT_H       0x3D   // R  
-#define MPU9150_ACCEL_YOUT_L       0x3E   // R  
-#define MPU9150_ACCEL_ZOUT_H       0x3F   // R  
-#define MPU9150_ACCEL_ZOUT_L       0x40   // R  
-#define MPU9150_TEMP_OUT_H         0x41   // R  
-#define MPU9150_TEMP_OUT_L         0x42   // R  
-#define MPU9150_GYRO_XOUT_H        0x43   // R  
-#define MPU9150_GYRO_XOUT_L        0x44   // R  
-#define MPU9150_GYRO_YOUT_H        0x45   // R  
-#define MPU9150_GYRO_YOUT_L        0x46   // R  
-#define MPU9150_GYRO_ZOUT_H        0x47   // R  
-#define MPU9150_GYRO_ZOUT_L        0x48   // R  
-#define MPU9150_PWR_MGMT_1         0x6B   // R/W
-#define MPU9150_PWR_MGMT_2         0x6C   // R/W
-#define MPU9150_WHO_AM_I           0x75   // R
-
-//MPU9150 Compass
-#define MPU9150_CMPS_XOUT_L        0x4A   // R
-#define MPU9150_CMPS_XOUT_H        0x4B   // R
-#define MPU9150_CMPS_YOUT_L        0x4C   // R
-#define MPU9150_CMPS_YOUT_H        0x4D   // R
-#define MPU9150_CMPS_ZOUT_L        0x4E   // R
-#define MPU9150_CMPS_ZOUT_H        0x4F   // R
-
-// I2C address 0x69 could be 0x68 depends on your wiring. 
-int MPU9150_I2C_ADDRESS = 0x68;
-#endif 
 
 void readBtn()
 {
@@ -407,6 +443,7 @@ void readBtn()
 void readSwtch()
 {
      if (digitalRead(31)==HIGH) _limitSwitch |= LIMIT_SWITCH_EL_MAX;   // no debounce, should really walk off the switch
+     else                       _limitSwitch & !LIMIT_SWITCH_EL_MAX;                           
 }
 
 
@@ -423,16 +460,6 @@ void pollGPS()                            // GPS shield is not integrated
   int16_t gx, gy, gz;
   int16_t mx, my, mz;
   
-#if 0
-  _compX = MPU9150_readSensor(MPU9150_CMPS_XOUT_L,MPU9150_CMPS_XOUT_H);
-  _compY = MPU9150_readSensor(MPU9150_CMPS_YOUT_L,MPU9150_CMPS_YOUT_H);
-  _compZ = MPU9150_readSensor(MPU9150_CMPS_ZOUT_L,MPU9150_CMPS_ZOUT_H);
-  _accX  = MPU9150_readSensor(MPU9150_ACCEL_XOUT_L,MPU9150_ACCEL_XOUT_H)*alpha + ((_accX)*(1.0-alpha));
-  _accY  = MPU9150_readSensor(MPU9150_ACCEL_YOUT_L,MPU9150_ACCEL_YOUT_H)*alpha + ((_accY)*(1.0-alpha));
-  _accZ  = MPU9150_readSensor(MPU9150_ACCEL_ZOUT_L,MPU9150_ACCEL_ZOUT_H)*alpha + ((_accZ)*(1.0-alpha));
-#endif 
-
-
   accelGyroMag.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
   _compX = mx*10.*1229./4096.;   // Conversion from 1229 microTesla full scale (4096) to 12.29 Gauss full scale
   _compY = my*10.*1229./4096.;   // note: really need to calibrate for large ferrous soft steel bench ginder stand
@@ -444,10 +471,13 @@ void pollGPS()                            // GPS shield is not integrated
   _roll  = atan2(_accY, _accZ) * RAD_TO_DEG;
   _pitch = atan(-_accX / sqrt(_accY * _accY + _accZ * _accZ)) * RAD_TO_DEG;
   _heading = atan2(_compY,_compX) * RAD_TO_DEG; // note we compute the tilt and then disregard it for heading!
- 
+   
+  AE35.set_ReadIMUSensorAxisAngle(0. /* -_heading*/ , 0., 0., -1.);      // the compass is reading gibberish
+  AE35.set_SensorToFrameAxisAngle(0., 1.,1.,1.);                 // the MPU9150 is tilted -17 degrees from vertical
+  
     time_t t = now();
     _gps_debug_temporary += 1;            // 150 laps to simulate time to acquire time base and lat/lon 
-    if (_gps_debug_temporary > 150)       // but we'll use the repetition to average the IMU readings
+    if (_gps_debug_temporary > 50)       // but we'll use the repetition to average the IMU readings
     {
         _latitude  =  44.884860;          // grid square EN34FV 
         _longitude = -93.551492;
@@ -468,33 +498,25 @@ void satTrackButtons()
 
     if ((_lcd_button_debounce == LCD_BUTTON_NONE) || (_lcd_button_debounce == 0)) return;
 
-    if (_flagHomePositionSet)
+    if (AE35.get_TrueIfHomeSet())
     {
         // user commands azimuth and angle in degrees
 
         switch(_lcd_button_debounce)
         {
         case LCD_BUTTON_UP:
-            _targetElevation = round(_targetElevation + 1.0);
+            AE35.AddDegreesToElevation(+1.0);
             break;
         case LCD_BUTTON_DOWN:
-            _targetElevation = round(_targetElevation - 1.0);
+            AE35.AddDegreesToElevation(-1.0);
             break;
         case LCD_BUTTON_RIGHT:
-            _targetAzimuth = round(_targetAzimuth + 1.0);
+            AE35.AddDegreesToAzimuth(+1.0);
             break;
         case LCD_BUTTON_LEFT:
-            _targetAzimuth = round(_targetAzimuth - 1.0);
+            AE35.AddDegreesToAzimuth(-1.0);
             break;
         };
-        _targetElevation = max(_targetElevation,0.0);     // this will be object oriented before we are all done
-        _targetElevation = min(_targetElevation,50.0);
-        _targetAzimuth   = max(_targetAzimuth,-90.0);
-        _targetAzimuth  =  min(_targetAzimuth,450.0);
-        _commandElevation = _targetElevation;
-        _commandAzimuth = _targetAzimuth;
-        _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
-        _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE);
     }
     else
     {
@@ -502,16 +524,16 @@ void satTrackButtons()
         switch(_lcd_button_debounce)
         {
         case LCD_BUTTON_UP:
-            _commandElSteps+=10;
+            AE35.AddStepsToElevation(+10);
             break;
         case LCD_BUTTON_DOWN:
-            _commandElSteps-=10;
+            AE35.AddStepsToElevation(-10);
             break;
         case LCD_BUTTON_LEFT:
-            _commandAzSteps-=10;
+            AE35.AddStepsToAzimuth(-10);
             break;
         case LCD_BUTTON_RIGHT:
-            _commandAzSteps+=10;
+            AE35.AddStepsToAzimuth(+10);
             break;
         };
 
@@ -594,18 +616,27 @@ void displayTargetAzElDeg() {
    lcd.setCursor(4,1);
    lcd.print("A     E     ");
    lcd.setCursor(5,1);
-   lcd.print(_targetAzimuth,1);
+   lcd.print(AE35.get_AzTarget(),1);
    lcd.setCursor(11,1);
-   lcd.print(_targetElevation,1);
+   lcd.print(AE35.get_ElTarget(),1);
 }
 
 void displayTargetAzElSteps() {
 
    char buffer[256];
 
-   sprintf(buffer,"A%05dE%05d",(int)_commandAzSteps,(int)_commandElSteps);
+   sprintf(buffer,"A%05dE%05d",(int)AE35.get_AzTargetMotorSteps(),(int)AE35.get_ElTargetMotorSteps());
    lcd.setCursor(4,1);
    lcd.print(buffer);
+}
+
+void displaySatelliteAzElDeg() {
+     lcd.setCursor(4,1);
+   lcd.print("A     E     ");
+   lcd.setCursor(5,1);
+   lcd.print(p13.AZ,1);
+   lcd.setCursor(11,1);
+   lcd.print(p13.EL,1);
 }
 
 
@@ -629,6 +660,11 @@ switch(_state) {
         displayHdgRollPitch();
         break;
    case DRIV:
+        lcd.clear();
+        displayState();
+        displayTimeHHMMSST();
+        if (AE35.get_TrueIfHomeSet()) displayTargetAzElDeg(); else displayTargetAzElSteps();
+        break;
    case TRAC:
    case HOME:
    case STOP:
@@ -637,7 +673,8 @@ switch(_state) {
         displayState();
         displayTimeHHMMSST();
         displaySatellite();
-        if (_flagHomePositionSet) displayTargetAzElDeg(); else displayTargetAzElSteps();
+        //if (AE35.get_TrueIfHomeSet()) displayTargetAzElDeg(); else displayTargetAzElSteps();
+        if (AE35.get_TrueIfHomeSet()) displaySatelliteAzElDeg(); else displayTargetAzElSteps();
         break;
 
     case SERL:
@@ -699,7 +736,8 @@ void switchCmd()
           elevationMotor.setCurrentPosition(ELEVATION_MOTOR_MAX_STEPS);
           azimuthMotor.setCurrentPosition(0);
 
-          _flagHomePositionSet = 1; 
+          AE35.setHome(); 
+          _limitSwitch = _limitSwitch & !LIMIT_SWITCH_EL_MAX;       // fix this later, home operation is clumsy
           _stateTransitionFlag |= HOME_POSITION_SET;
           }
 }
@@ -733,6 +771,8 @@ void updateSat()
     // p13.setTime((int)year(t),(int)month(t),(int)day(t),(int)hour(t),(int)minute(t),(int)second(t));
     p13.satvec();
     p13.rangevec();
+    AE35.set_targetAz(p13.AZ); 
+    AE35.set_targetEl(p13.EL);
 
 #ifdef DEBUGP13
     debugp13update();
@@ -740,43 +780,13 @@ void updateSat()
 
 }
 
-void trackCommand() {
-  _targetElevation = p13.EL; 
-  _targetAzimuth = p13.AZ;
-}
-
-void targetAzElToCmd() 
-{
-#ifdef FUNCTIONTRACETOSERIAL
-    Serial.println(__func__);
-#endif
-  _commandElevation = min(max(_targetElevation,5.0),ELEVATION_GIMBAL_MAX_ELEVATION);
-
-// need a more sophisticated cable wrap protection logic +/- 200 degrees or more would be fine
-
-  if (_targetAzimuth > 180.0) {
-    _commandAzimuth = - (360.0 - _targetAzimuth);
-  } else {
-    _commandAzimuth = _targetAzimuth; 
-  }
-}
-
-void cmdAzElToSteps()
-{
-    _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE);
-    _commandElSteps = max(_commandElSteps,ELEVATION_MOTOR_MIN_STEPS);
-    _commandElSteps = min(_commandElSteps,ELEVATION_MOTOR_MAX_STEPS);
-    _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE);
-    _commandAzSteps = max(_commandAzSteps,AZIMUTH_MOTOR_MIN_STEPS);
-    _commandAzSteps = min(_commandAzSteps,AZIMUTH_MOTOR_MAX_STEPS);
-}
-
 void stepsAzElToMotors()
 {
-    azimuthMotor.moveTo(_commandAzSteps);       // Note: original executive was throttled to a maximum of 50 steps/second
+     
+    azimuthMotor.moveTo(AE35.get_AzTargetMotorSteps());       // Note: original executive was throttled to a maximum of 50 steps/second
     azimuthMotor.setMaxSpeed(_maxAzSpeed);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
     azimuthMotor.setAcceleration(200.0);         // "but they're so small they're evading our turbolasers."
-    elevationMotor.moveTo(_commandElSteps);
+    elevationMotor.moveTo(AE35.get_ElTargetMotorSteps());
     elevationMotor.setMaxSpeed(_maxElSpeed);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
     elevationMotor.setAcceleration(200.0);       //
 }
@@ -786,9 +796,6 @@ void currentMotorPos()
 #ifdef FUNCTIONTRACETOSERIAL
     Serial.println(__func__);
 #endif
-
-    _currentAzSteps = azimuthMotor.currentPosition();
-    _currentElSteps = elevationMotor.currentPosition();
 
 // Keep the L293D from frying while we debug, antenna position may drift
     if (azimuthMotor.distanceToGo() == 0) motor2.release();
@@ -824,9 +831,9 @@ void processSerial1() {
 // The host PC issues a single line command as follows -:
 // AZaaa.a ELeee.e UPuuuuuuuuu UUU DNddddddddd DDD
 //
-   if (c == '\n') {
-    _targetAzimuth = _serialInput.substring(_serialInput.indexOf("AZ")+2,_serialInput.indexOf(" ",_serialInput.indexOf("AZ"))).toFloat();
-    _targetElevation = _serialInput.substring(_serialInput.indexOf("EL")+2,_serialInput.indexOf(" ",_serialInput.indexOf("EL"))).toFloat();  
+   if (c == '\n') { 
+    AE35.set_targetAz(_serialInput.substring(_serialInput.indexOf("AZ")+2,_serialInput.indexOf(" ",_serialInput.indexOf("AZ"))).toFloat());
+    AE35.set_targetEl(_serialInput.substring(_serialInput.indexOf("EL")+2,_serialInput.indexOf(" ",_serialInput.indexOf("AZ"))).toFloat());
    _serialInput = "";
    }
 
@@ -839,10 +846,12 @@ void processSerial1() {
         if (_serialInput.startsWith("AZ")) {
              _commandAzimuth = _targetAzimuth = _serialInput.substring(2,_serialInput.length()-2).toFloat(); 
              _commandAzSteps = round(_commandAzimuth * AZIMUTH_GIMBAL_STEPS_PER_DEGREE);  
+             AE35.set_targetAz(_serialInput.substring(2,_serialInput.length()-2).toFloat());
              _serialInput = ""; 
         } else if (_serialInput.startsWith("EL")) {
              _commandElevation = _targetElevation = _serialInput.substring(2,_serialInput.length()-2).toFloat(); 
              _commandElSteps = round(_commandElevation * ELEVATION_GIMBAL_STEPS_PER_DEGREE); 
+              AE35.set_targetEl(_serialInput.substring(2,_serialInput.length()-2).toFloat());
              _serialInput = ""; 
         } 
     }
@@ -878,18 +887,18 @@ unsigned short int transitions[NUMBEROFSTATES][NUMBEROFSTATES] =
 void (*slow[5][NUMBEROFSTATES])()
     = {   noop,          noop,        satTrackLCD,  satTrackLCD,   satTrackLCD,   satTrackLCD, satTrackLCD,   noop,
           noop,          noop,          pollGPS,   currentMotorPos, updateSat,       noop,        noop,       noop,
-          noop,          noop,           noop,        noop,        trackCommand,     noop,        noop,       noop,
           noop,          noop,           noop,        noop,       currentMotorPos,   noop,        noop,       noop,
+          noop,          noop,           noop,        noop,            noop,         noop,        noop,       noop,
           noop,          noop,           noop,        noop,            noop,         noop,        noop,       noop
       };
       
 void (*medium[5][NUMBEROFSTATES])()
     /*  INIT           CNFG            GPSL          DRIV           TRAC           HOM          SERL        STOP  */
-    = {   noop,          noop,       noop,  satTrackButtons, satTrackButtons, stepsAzElToMotors, processSerial1, noop,
-          noop,          noop,       noop,  stepsAzElToMotors, targetAzElToCmd,   noop,   targetAzElToCmd,        noop,
-          noop,          noop,       noop,         noop,        cmdAzElToSteps,   noop,   cmdAzElToSteps,        noop,
-          noop,          noop,       noop,         noop,       stepsAzElToMotors, noop,  stepsAzElToMotors,      noop,
-          noop,          noop,       noop,         noop,          checkSerial1,   noop,        noop,             noop
+    = {   noop,          noop,       noop,  satTrackButtons,   satTrackButtons, stepsAzElToMotors, processSerial1, noop,
+          noop,          noop,       noop,  stepsAzElToMotors, stepsAzElToMotors,  noop,    stepsAzElToMotors,     noop,
+          noop,          noop,       noop,         noop,        checkSerial1,     noop,        noop,               noop,
+          noop,          noop,       noop,         noop,          noop,           noop,        noop,               noop,
+          noop,          noop,       noop,         noop,          noop,           noop,        noop,               noop
       };
 
 void (*fast[5][NUMBEROFSTATES])()
@@ -1239,10 +1248,10 @@ void initAE35()
 #endif
     String temp; 
     _lastms = _fastTimer = _mediumTimer = _slowTimer = 0;
-    _commandAzimuth = _commandElevation = _targetAzimuth = _targetElevation = 0;
-    _commandAzSteps = _commandElSteps = 0;
+    AE35.set_targetAz(0.);
+    AE35.set_targetEl(0.);
+
     _stateTransitionFlag = 0;
-    _flagHomePositionSet = 0;
 
     pinMode(31,INPUT_PULLUP);         // elevation MAX limit switch breadboarded into digital 31
     setTime(23,30,00,11,10,15);
@@ -1261,23 +1270,18 @@ void initAE35()
 
   Wire.begin();
   accelGyroMag.initialize();
-#if 0   
-   // Initialize the 'Wire' class for the I2C-bus.
-   Wire.begin();
 
-   //
-   // Initialize plumb bob sensor and compass
-   //
-   // Clear the 'sleep' bit to start the sensor.
-   MPU9150_writeSensor(MPU9150_PWR_MGMT_1, 0);
-   MPU9150_setupCompass();
-   _compX = MPU9150_readSensor(MPU9150_CMPS_XOUT_L,MPU9150_CMPS_XOUT_H);  // magnetometer is returning all zeros
-   _compY = MPU9150_readSensor(MPU9150_CMPS_YOUT_L,MPU9150_CMPS_YOUT_H);
-   _compZ = MPU9150_readSensor(MPU9150_CMPS_ZOUT_L,MPU9150_CMPS_ZOUT_H);
-   _accX  = MPU9150_readSensor(MPU9150_ACCEL_XOUT_L,MPU9150_ACCEL_XOUT_H);
-   _accY  = MPU9150_readSensor(MPU9150_ACCEL_YOUT_L,MPU9150_ACCEL_YOUT_H);
-   _accZ  = MPU9150_readSensor(MPU9150_ACCEL_ZOUT_L,MPU9150_ACCEL_ZOUT_H);
-#endif 
+  AE35.set_ElAntUpperLimitDeg(50.);                     
+  AE35.set_ElAntLowerLimitDeg(5.);
+  AE35.set_AzAntUpperLimitDeg(+270.);  
+  AE35.set_AzAntLowerLimitDeg(-270.); 
+  AE35.set_AzMotorUpperLimitSteps(AZIMUTH_MOTOR_MAX_STEPS);
+  AE35.set_AzMotorLowerLimitSteps(AZIMUTH_MOTOR_MIN_STEPS);
+  AE35.set_ElMotorUpperLimitSteps(ELEVATION_MOTOR_MAX_STEPS);
+  AE35.set_ElMotorLowerLimitSteps(ELEVATION_MOTOR_MIN_STEPS);
+  AE35.set_ElAntStepsPerDegree(ELEVATION_GIMBAL_STEPS_PER_DEGREE);
+  AE35.set_AzAntStepsPerDegree(AZIMUTH_GIMBAL_STEPS_PER_DEGREE);
+  AE35.debug();
 
 // temporarily allow user to input an approximate time
 
@@ -1418,6 +1422,7 @@ void configAE35()
 #ifdef DEBUGP13
     debugP13keps();
 #endif
+    AE35.debug(); 
 };
 
 void gpsLockAE35()
@@ -1459,9 +1464,8 @@ void trackAE35()
 #ifdef DEBUGP13
     debugP13keps();
 #endif
-
-    _commandAzimuth = _targetAzimuth = p13.AZ;
-    _commandElevation = _targetElevation = p13.EL;
+    AE35.set_targetAz(p13.AZ);
+    AE35.set_targetEl(p13.EL);
 };
 
 void homeAE35()
@@ -1470,7 +1474,7 @@ void homeAE35()
     Serial.println(__func__);
 #endif
     
-    if (_flagHomePositionSet) {
+    if (AE35.get_TrueIfHomeSet()) {
       _stateTransitionFlag |= HOME_POSITION_SET;
       return;
     }
@@ -1480,9 +1484,9 @@ void homeAE35()
 
     azimuthMotor.setCurrentPosition(0);       // will re-zero when actually home
     elevationMotor.setCurrentPosition(0);
-
-    _commandAzSteps = 0;
-    _commandElSteps = (ELEVATION_MOTOR_MAX_STEPS);
+    AE35.set_targetEl(0.);
+    AE35.set_targetAz(0.);
+    AE35.AddStepsToElevation(ELEVATION_MOTOR_MAX_STEPS);
 };
 
 void stopAE35()
@@ -1577,86 +1581,6 @@ void loop ()
                                                       // timing tests indicated 12/1/2015 version loops every 1-2ms
 }
 
-#if 0 
-// this never worked for magnetometer
-
-void MPU9150_setupCompass(){
-  MPU9150_I2C_ADDRESS = 0x0C;      //change Address to Compass 0x0D
-
-  // sleep mode & clock
-  MPU9150_writeSensor(0x6b, 0x01);
-  
-  MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
-  MPU9150_writeSensor(0x0A, 0x0F); //SelfTest
-  MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
-
-// passthrough mode
-  MPU9150_writeSensor(0x37, 0x02);
-// I2C master disable
-  MPU9150_writeSensor(0x6a, 0x00);
-
-    
-  MPU9150_I2C_ADDRESS = 0x68;      //change Address to MPU
-
-  MPU9150_writeSensor(0x24, 0x40); //Wait for Data at Slave0
-  MPU9150_writeSensor(0x25, 0x8C); //Set i2c address at slave0 at 0x0C
-  MPU9150_writeSensor(0x26, 0x02); //Set where reading at slave 0 starts
-  MPU9150_writeSensor(0x27, 0x88); //set offset at start reading and enable
-  MPU9150_writeSensor(0x28, 0x0C); //set i2c address at slv1 at 0x0C
-  MPU9150_writeSensor(0x29, 0x0A); //Set where reading at slave 1 starts
-  MPU9150_writeSensor(0x2A, 0x81); //Enable at set length to 1
-  MPU9150_writeSensor(0x64, 0x01); //overvride register
-  MPU9150_writeSensor(0x67, 0x03); //set delay rate
-  MPU9150_writeSensor(0x01, 0x80);
-
-  MPU9150_writeSensor(0x34, 0x04); //set i2c slv4 delay
-  MPU9150_writeSensor(0x64, 0x00); //override register
-  MPU9150_writeSensor(0x6A, 0x00); //clear usr setting
-  MPU9150_writeSensor(0x64, 0x01); //override register
-  MPU9150_writeSensor(0x6A, 0x20); //enable master i2c mode
-  MPU9150_writeSensor(0x34, 0x13); //disable slv4
-}
-
-////////////////////////////////////////////////////////////
-///////// I2C functions to get easier all values ///////////
-////////////////////////////////////////////////////////////
-
-int MPU9150_readSensor(int addrL, int addrH){
-  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
-  Wire.write(addrL);
-  Wire.endTransmission(false);
-
-  Wire.requestFrom(MPU9150_I2C_ADDRESS, 1, true);
-  byte L = Wire.read();
-
-  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
-  Wire.write(addrH);
-  Wire.endTransmission(false);
-
-  Wire.requestFrom(MPU9150_I2C_ADDRESS, 1, true);
-  byte H = Wire.read();
-
-  return (int16_t)((H<<8)+L);
-}
-
-int MPU9150_readSensor(int addr){
-  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
-  Wire.write(addr);
-  Wire.endTransmission(false);
-
-  Wire.requestFrom(MPU9150_I2C_ADDRESS, 1, true);
-  return Wire.read();
-}
-
-int MPU9150_writeSensor(int addr,int data){
-  Wire.beginTransmission(MPU9150_I2C_ADDRESS);
-  Wire.write(addr);
-  Wire.write(data);
-  Wire.endTransmission(true);
-
-  return 1;
-}
-#endif 
 
 void debugP13keps()
 {
