@@ -124,6 +124,7 @@ class gimbal
         double    AzAntUpperLimitDeg; 
         double    ElAntLowerLimitDeg; 
         double    ElAntUpperLimitDeg; 
+        unsigned long int    AzMotorIdleTimeout;
         axisAngle IMU;
         axisAngle plumb; 
 
@@ -252,6 +253,10 @@ class gimbal
         bool get_TrueIfHomeSet() { return homePositionSet; }
         double get_AzTarget() { return (Az); };
         double get_ElTarget() { return (El); };
+        void setAzIdleTimeout (unsigned long int timenow) { AzMotorIdleTimeout = timenow; };
+        void setElIdleTimeout (unsigned long int timenow) { ElMotorIdleTimeout = timenow; };
+        unsigned long int get_AzIdleTimeout() { return AzMotorIdleTimeout; };
+        unsigned long int get_ElIdleTimeout() { return ElMotorIdleTimeout; };
       
 
         void debug() {
@@ -326,52 +331,45 @@ double _heading;
 Plan13              p13;
 // temporarily hard code in TLEs
 // http://www.amsat.org/amsat/ftp/keps/current/nasabare.txt
-//
+//b
 String _keps[] =
 {
 "2015-11-22",
 "HUBBLE",
-"1 20580U 90037B   15308.45560487  .00002158  00000-0  12608-3 0  9996",
-"2 20580  28.4708 308.8893 0002648 304.5112 184.0287 15.07840717201004",
+"1 20580U 90037B   16337.33349726  .00000643  00000-0  28860-4 0  9992",
+"2 20580  28.4735 228.1317 0002820 210.1105 149.9297 15.08610929260529",
 "ISS",          
-"1 25544U 98067A   15355.13133534  .00018357  00000-0  27491-3 0  9992",
-"2 25544  51.6438 231.1133 0008100 305.0563 214.8814 15.54985591977120",
+"1 25544U 98067A   16339.64604167  .00003329  00000-0  58192-4 0  9992",
+"2 25544  51.6456 288.0530 0006009 290.9482  67.2869 15.53793639 31490",
 "MOON2015_11",
 "1 01511U 00000    15298.25194076  .00000000  00000-0  10000-3 0 00004",
 "2 01511 018.2897 359.7740 0563000 005.5133 355.1249  0.03660099000003",
 "AO-73",
-"1 39444U 13066AE  15322.87353904  .00001603  00000-0  20942-3 0  9992",
-"2 39444 097.7123 019.8359 0059120 352.6005 007.4329 14.80630332105717",
+"1 39444U 13066AE  16337.10471240  .00000403  00000-0  56772-4 0  9997",
+"2 39444  97.6596  23.4188 0058533 190.4556 169.5445 14.81269764162436",
 "EO-79",
-"1 40025U 14033R   15323.68957936  .00002024  00000-0  22884-3 0  9994",
-"2 40025  97.9393 224.0784 0013846  39.8494 320.3736 14.87549197 76900",
+"1 40025U 14033R   16336.68897719  .00000536  00000-0  64075-4 0  9996",
+"2 40025  97.9198 242.0105 0011420 230.9360 129.0841 14.88233503133112",
 "XW-2A",
-"1 40903U 15049E   15323.81209640  .00008866  00000-0  27050-3 0  9994",
-"2 40903  97.4535 331.6657 0016993 161.4437 315.3446 15.34028666  9271",
+"1 40903U 15049E   16337.46365788  .00002604  00000-0  72579-4 0  9998",
+"2 40903  97.4368 354.7143 0013689 250.3354 109.6414 15.37649071 67406",
 "XW-2C",
-"1 40906U 15049H   15323.76045139  .00004684  00000-0  27165-3 0  9993",
-"2 40906  97.4554 330.5189 0017561  48.0555  38.9239 15.12514737  9189",
-"NO-44",
-"1 26931U 01043C   15323.45331922  .00000099  00000-0  69935-4 0  9996",
-"2 26931  67.0493 136.5664 0006697 276.9610  83.0729 14.30361042738003",
+"1 40906U 15049H   16337.45963747  .00001016  00000-0  59234-4 0  9998",
+"2 40906  97.4540 340.9721 0015648 169.8151 190.3401 15.14102594 66463",
 "SO-50",
-"1 27607U 02058C   15322.84217690  .00001068  00000-0  17106-3 0  9990",
-"2 27607  64.5550  86.4971 0082302 258.7912 100.3931 14.74931981694095",
-"AO-51",
-"1 28375U 04025K   15323.38078738  .00000170  00000-0  63277-4 0  9991",
-"2 28375  98.3112 259.4755 0081976 220.4782 260.7991 14.41721314598851",
-"NO-84",
-"1 40654U 15025X   15336.15621742  .00014546  00000-0  35274-3 0 02007",
-"2 40654 054.9965 209.1907 0224949 302.4861 055.4602 15.19293577029654",
-"AO-85",
-"1 40967U 15058D   15323.50196694  .00001732  00000-0  19539-3 0 00443",
-"2 40967 064.7773 164.5226 0217735 269.2432 088.3721 14.74416702006068",
+"1 27607U 02058C   16337.15052400  .00000226  00000-0  32603-4 0  9992",
+"2 27607  64.5576   7.6449 0048062 176.3920 183.8033 14.75256208750047",
+"OSCAR 7 (AO-7)",          
+"1 07530U 74089B   16337.20580185 -.00000054  00000-0 -60754-4 0  9999",
+"2 07530 101.6009 304.0171 0012126 346.1151  84.8404 12.53624321924173",
 "END",
 };
 
+// http://www.embedded.com/design/mcus-processors-and-socs/4006438/Generate-stepper-motor-speed-profiles-in-real-time
+
 #define AZIMUTH_MOTOR_STEPS_PER_REV         200
 #define ELEVATION_MOTOR_STEPS_PER_REV       200
-#define AZIMUTH_GIMBAL_STEPS_PER_DEGREE     (1180.0 / 90.0)
+#define AZIMUTH_GIMBAL_STEPS_PER_DEGREE     ((1180.0) / 90.0)
 #define ELEVATION_GIMBAL_STEPS_PER_DEGREE   ((2000.0) / 50.0)
 
 #define AZIMUTH_MOTOR_MAX_STEPS             (3000)
@@ -380,13 +378,15 @@ String _keps[] =
 #define ELEVATION_MOTOR_MIN_STEPS           (0)
 #define ELEVATION_GIMBAL_MAX_ELEVATION      (50)
 
-#define MAX_EL_SPEED_MANUAL                 (120)
-#define MAX_EL_SPEED_TRACK                  (60)
-#define MAX_EL_SPEED_HOME                   (30)
-#define MAX_AZ_SPEED_MANUAL                 (120)
-#define MAX_AZ_SPEED_TRACK                  (60)
-#define MAX_AZ_SPEED_HOME                   (30)
-   
+#define MAX_EL_SPEED_MANUAL                 (200)
+#define MAX_EL_SPEED_TRACK                  (200)
+#define MAX_EL_SPEED_HOME                   (75)
+#define MAX_AZ_SPEED_MANUAL                 (200)
+#define MAX_AZ_SPEED_TRACK                  (200)
+#define MAX_AZ_SPEED_HOME                   (100)
+
+#define MOTOR_MS_IDLE_BEFORE_RELEASE        (1500)
+
 void readBtn();
 
 /********************************************************************************************************
@@ -480,7 +480,7 @@ void pollGPS()                            // GPS shield is not integrated
   
     time_t t = now();
     _gps_debug_temporary += 1;            // 150 laps to simulate time to acquire time base and lat/lon 
-    if (_gps_debug_temporary > 50)       // but we'll use the repetition to average the IMU readings
+    if (_gps_debug_temporary > 30)       // but we'll use the repetition to average the IMU readings
     {
         _latitude  =  44.884860;          // grid square EN34FV 
         _longitude = -93.551492;
@@ -714,11 +714,11 @@ void backwardstep_motor1()
 
 void forwardstep_motor2()
 {
-    motor2.onestep(FORWARD, INTERLEAVE);
+    motor2.onestep(FORWARD, /* SINGLE */ INTERLEAVE);    
 }
 void backwardstep_motor2()
 {
-    motor2.onestep(BACKWARD, INTERLEAVE);
+    motor2.onestep(BACKWARD, /* SINGLE */ INTERLEAVE);
 }
 
 
@@ -757,6 +757,19 @@ void movAzElMotors()
     elevationMotor.run();
 }
 
+void movAzElMotorsSpeed() 
+{
+#ifdef FUNCTIONTRACETOSERIAL
+    Serial.println(__func__);
+#endif
+
+// don't use acceleration function during satellite tracking  
+// (experiment for smooth motion)
+//
+    azimuthMotor.runSpeed(); 
+    elevationMotor.runSpeed();
+}
+
 void updateSat()
 {
    double seconds;
@@ -788,10 +801,10 @@ void stepsAzElToMotors()
      
     azimuthMotor.moveTo(AE35.get_AzTargetMotorSteps());       // Note: original executive was throttled to a maximum of 50 steps/second
     azimuthMotor.setMaxSpeed(_maxAzSpeed);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
-    azimuthMotor.setAcceleration(200.0);         // "but they're so small they're evading our turbolasers."
+    azimuthMotor.setAcceleration(20.0);         // "but they're so small they're evading our turbolasers."
     elevationMotor.moveTo(AE35.get_ElTargetMotorSteps());
     elevationMotor.setMaxSpeed(_maxElSpeed);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
-    elevationMotor.setAcceleration(200.0);       //
+    elevationMotor.setAcceleration(20.0);       //
 }
 
 void currentMotorPos()
@@ -800,10 +813,23 @@ void currentMotorPos()
     Serial.println(__func__);
 #endif
 
-// Keep the L293D from frying while we debug, antenna position may drift
-    if (azimuthMotor.distanceToGo() == 0) motor2.release();
-    if (elevationMotor.distanceToGo() == 0) motor1.release();
-}
+// current antenna mounting loads the gimbal too much and elevation can slide if motors off
+// keep an eye on drive circuit. However, stacked L293D chips may fry so release motor if we are really stopped
+// 
+   if (azimuthMotor.distanceToGo() == 0) {
+      if ((millis() - AE35.get_AzIdleTimeout()) > MOTOR_MS_IDLE_BEFORE_RELEASE) motor2.release();
+   }
+   else {
+      AE35.setAzIdleTimeout(millis()); 
+   }
+
+   if (elevationMotor.distanceToGo() == 0) {
+      if ((millis() - AE35.get_ElIdleTimeout()) > MOTOR_MS_IDLE_BEFORE_RELEASE) motor1.release();
+   }
+   else {
+      AE35.setElIdleTimeout(millis()); 
+   } 
+};
 
 void displaySel() { } ;
 void menuSel()  { };
@@ -889,17 +915,17 @@ unsigned short int transitions[NUMBEROFSTATES][NUMBEROFSTATES] =
 /*    INIT         CNFG        GPSL        DRIV          TRAC        HOME        SERL      STOP  */
 void (*slow[5][NUMBEROFSTATES])()
     = {   noop,          noop,        satTrackLCD,  satTrackLCD,   satTrackLCD,   satTrackLCD, satTrackLCD,   noop,
-          noop,          noop,          pollGPS,   currentMotorPos, updateSat,       noop,        noop,       noop,
-          noop,          noop,           noop,        noop,       currentMotorPos,   noop,        noop,       noop,
-          noop,          noop,           noop,        noop,            noop,         noop,        noop,       noop,
-          noop,          noop,           noop,        noop,            noop,         noop,        noop,       noop
+          noop,          noop,          pollGPS,   currentMotorPos, updateSat,         noop,        noop,       noop,
+          noop,          noop,           noop,        noop,       stepsAzElToMotors,   noop,        noop,       noop,
+          noop,          noop,           noop,        noop,       currentMotorPos,     noop,        noop,       noop,
+          noop,          noop,           noop,        noop,            noop,           noop,        noop,       noop
       };
       
 void (*medium[5][NUMBEROFSTATES])()
     /*  INIT           CNFG            GPSL          DRIV           TRAC           HOM          SERL        STOP  */
-    = {   noop,          noop,       noop,  satTrackButtons,   satTrackButtons, stepsAzElToMotors, processSerial1, noop,
-          noop,          noop,       noop,  stepsAzElToMotors, stepsAzElToMotors,  noop,    stepsAzElToMotors,     noop,
-          noop,          noop,       noop,         noop,        checkSerial1,     noop,        noop,               noop,
+    = {   noop,          noop,       noop,  satTrackButtons, satTrackButtons, stepsAzElToMotors, processSerial1,   noop,
+          noop,          noop,       noop,  stepsAzElToMotors, checkSerial1,     noop,    stepsAzElToMotors,       noop,
+          noop,          noop,       noop,         noop,          noop,           noop,        noop,               noop,
           noop,          noop,       noop,         noop,          noop,           noop,        noop,               noop,
           noop,          noop,       noop,         noop,          noop,           noop,        noop,               noop
       };
@@ -909,15 +935,15 @@ void (*fast[5][NUMBEROFSTATES])()
          noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
          noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
          noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
-         noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,      noop
       };
 
 void (*always[5][NUMBEROFSTATES])()
-    = {  noop,           noop,           noop,     movAzElMotors, movAzElMotors,  readSwtch,    movAzElMotors, noop,
-         noop,           noop,           noop,         noop,          noop,       switchCmd,      noop,        noop,
-         noop,           noop,           noop,         noop,          noop,      movAzElMotors,   noop,        noop,
-         noop,           noop,           noop,         noop,          noop,         noop,         noop,        noop,
-         noop,           noop,           noop,         noop,          noop,         noop,         noop,        noop
+    = {  noop,           noop,           noop,     movAzElMotors,  movAzElMotors, readSwtch,  movAzElMotors,    noop,
+         noop,           noop,           noop,         noop,          noop,        switchCmd,     noop,         noop,
+         noop,           noop,           noop,         noop,          noop,     movAzElMotors,    noop,         noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,         noop,
+         noop,           noop,           noop,         noop,          noop,         noop,         noop,         noop
       };
 
 
@@ -975,9 +1001,9 @@ void manualSatelliteInput_blocking()
 //
 void manualDateInput_blocking()
 {
-    int Month=1;
-    int Day=1;
-    int Year = 2015;
+    int Month=12;
+    int Day=4;
+    int Year = 2016;
     int indexPos = 0;
     int cursorPos = 0;
     unsigned short int initial_button_state;
@@ -1125,8 +1151,8 @@ void manualTimeInput_blocking()
 
     time_t t = now();
 
-    hours = hour(t);
-    minutes = minute(t);
+    hours = 23; /* hour(t); */
+    minutes = 25; /* minute(t); */
     seconds = second(t);
 
     while (!_flagTimeSetManually)
@@ -1270,7 +1296,11 @@ void initAE35()
     delay(3000);
     azimuthMotor.setCurrentPosition(0);
     elevationMotor.setCurrentPosition(0);
-
+    // azimuthMotor.setMaxSpeed(MAX_AZ_SPEED_MANUAL);               // 50 steps/sec / (1180.0 / 90.0) = ~4deg/sec
+    // azimuthMotor.setAcceleration(200.0);                         // "but they're so small they're evading our turbolasers."
+    // elevationMotor.setMaxSpeed(MAX_EL_SPEED_MANUAL);             // 50 steps/second / (1760.0 / 45.0) = ~1.3deg/sec
+    // elevationMotor.setAcceleration(200.0);       //
+  
   Wire.begin();
   accelGyroMag.initialize();
 
