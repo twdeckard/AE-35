@@ -125,6 +125,7 @@ class gimbal
         double    ElAntLowerLimitDeg; 
         double    ElAntUpperLimitDeg; 
         unsigned long int    AzMotorIdleTimeout;
+        unsigned long int    ElMotorIdleTimeout;  
         axisAngle IMU;
         axisAngle plumb; 
 
